@@ -11,33 +11,59 @@ describe('RGB 马赛克游戏原型', () => {
     vi.useRealTimers();
   });
 
-  it('进入页面后自动挖矿并展示库存', () => {
+  it('默认进入挖矿页并只展示最近 10 条产出记录', () => {
     render(<App />);
 
-    expect(screen.getAllByText('自动挖矿中').length).toBeGreaterThan(0);
+    expect(screen.getByRole('heading', { name: '挖矿控制台' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '色块库存' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '16x16 像素画布' })).not.toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(16500);
+    });
+
+    expect(screen.getAllByText('+1')).toHaveLength(10);
+  });
+
+  it('库存页分开展示色块库存和马赛克作品库', () => {
+    render(<App />);
 
     act(() => {
       vi.advanceTimersByTime(1600);
     });
 
-    expect(screen.getByText('已挖颜色')).toBeInTheDocument();
-    expect(screen.getAllByText('1').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+
+    expect(screen.getByRole('heading', { name: '色块库存' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '马赛克作品库' })).toBeInTheDocument();
+    expect(screen.getByText('待鉴定')).toBeInTheDocument();
+    expect(screen.getByText('已鉴定')).toBeInTheDocument();
+    expect(screen.getByText('已归档')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /选择 RGB/ })).toBeInTheDocument();
   });
 
-  it('可以选择库存颜色并填充 16x16 画布', () => {
+  it('画布填色后自动保存到待鉴定作品并可继续创作', () => {
     render(<App />);
 
     act(() => {
       vi.advanceTimersByTime(1600);
     });
 
+    fireEvent.click(screen.getByRole('button', { name: '画布' }));
     fireEvent.click(screen.getByRole('button', { name: /选择 RGB/ }));
     fireEvent.click(screen.getAllByRole('button', { name: /空像素/ })[0]);
 
     const canvas = screen.getByLabelText('16x16 像素画布');
 
     expect(within(canvas).getByRole('button', { name: /已填充/ })).toBeInTheDocument();
-    expect(screen.getByText(/库存已消耗/)).toBeInTheDocument();
+    expect(screen.getByText(/已自动保存到待鉴定作品/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+
+    expect(screen.getByText('当前待鉴定作品')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '继续创作' }));
+
+    expect(screen.getByRole('heading', { name: '16x16 像素画布' })).toBeInTheDocument();
   });
 });

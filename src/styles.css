@@ -99,15 +99,70 @@ h2 {
   font-size: clamp(20px, 2.4vw, 30px);
 }
 
-.game-layout {
+.page-tabs {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.page-tabs button {
+  min-width: 116px;
+  padding: 14px 20px;
+  border: 1px solid rgba(245, 241, 223, 0.18);
+  color: #f5f1df;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+}
+
+.page-tabs button:hover,
+.page-tabs button.active {
+  border-color: #ffcc4d;
+  background: rgba(255, 204, 77, 0.14);
+}
+
+.page-grid,
+.inventory-page,
+.canvas-layout {
   display: grid;
-  grid-template-columns: 320px minmax(360px, 1fr) 300px;
   gap: 16px;
   margin-top: 16px;
 }
 
+.mining-page {
+  grid-template-columns: 360px minmax(0, 1fr);
+}
+
+.inventory-page {
+  grid-template-columns: 360px minmax(0, 1fr);
+}
+
+.canvas-layout {
+  grid-template-columns: 360px minmax(420px, 1fr);
+}
+
 .panel {
   padding: 20px;
+}
+
+.console-meter {
+  margin-top: 38px;
+  padding: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 220, 255, 0.08);
+}
+
+.console-meter span {
+  display: block;
+  color: #b8af9b;
+  font-size: 12px;
+}
+
+.console-meter strong {
+  display: block;
+  margin-top: 12px;
+  color: #00dcff;
+  font-size: clamp(48px, 6vw, 92px);
+  line-height: 0.9;
 }
 
 .panel-heading {
@@ -173,9 +228,38 @@ h2 {
 }
 
 .swatch {
+  display: inline-block;
   width: 34px;
   height: 34px;
   border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.record-list {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.record-list li {
+  display: grid;
+  grid-template-columns: 34px 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border-left: 2px solid #00dcff;
+  background: rgba(0, 220, 255, 0.08);
+}
+
+.record-list time,
+.record-list strong {
+  color: #b8af9b;
+  font-size: 13px;
+}
+
+.record-list strong {
+  color: #7dff69;
 }
 
 .canvas-panel {
@@ -202,6 +286,74 @@ h2 {
 .pixel:hover {
   border-color: #ffcc4d;
   transform: scale(1.08);
+}
+
+.mosaic-library h2 {
+  margin-bottom: 18px;
+}
+
+.mosaic-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.mosaic-column {
+  min-height: 260px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.mosaic-column h3 {
+  margin: 0 0 14px;
+  color: #ffcc4d;
+  font-size: 15px;
+}
+
+.draft-card {
+  display: grid;
+  gap: 12px;
+}
+
+.draft-card strong,
+.draft-card span {
+  display: block;
+}
+
+.draft-card span {
+  color: #b8af9b;
+  font-size: 13px;
+}
+
+.draft-card button {
+  padding: 10px 12px;
+  border: 1px solid #00dcff;
+  color: #f5f1df;
+  background: rgba(0, 220, 255, 0.1);
+  cursor: pointer;
+}
+
+.mosaic-preview {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  width: 100%;
+  max-width: 180px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #050505;
+}
+
+.mosaic-preview span {
+  aspect-ratio: 1;
+  background: #171717;
+}
+
+.autosave-message {
+  margin: 14px 0 0;
+  color: #7dff69;
+  font-size: 13px;
 }
 
 .log-panel ol {
@@ -233,7 +385,10 @@ h2 {
 
 @media (max-width: 1080px) {
   .status-bar,
-  .game-layout {
+  .page-grid,
+  .inventory-page,
+  .canvas-layout,
+  .mosaic-columns {
     grid-template-columns: 1fr;
   }
 }
@@ -246,6 +401,16 @@ h2 {
 
   .status-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .page-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .page-tabs button {
+    min-width: 0;
+    padding: 12px 8px;
   }
 
   .panel,
