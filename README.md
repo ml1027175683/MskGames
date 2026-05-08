@@ -1,5 +1,7 @@
 # RGB 马赛克资产游戏
 
+![RGB 马赛克资产游戏海报](docs/assets/rgb-mosaic-poster.svg)
+
 这是一个面向 Steam 长期目标的 RGB 马赛克资产游戏原型。
 
 玩家通过放置玩法挖掘真实 RGB 颜色，把颜色作为可消耗颜料填入像素画布。作品鉴定成功后，会成为平台内唯一数字资产，并可进入平台内市场交易。后续资产模型预留 Steam Inventory / Steam Market 接入能力。
