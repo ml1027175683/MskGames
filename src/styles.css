@@ -631,12 +631,19 @@ h2 {
 .mosaic-preview {
   display: grid;
   grid-template-columns: repeat(16, 1fr);
-  gap: 3px;
+  gap: 2px;
   width: 100%;
   max-width: 360px;
   padding: 18px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: #050505;
+}
+
+.mosaic-preview.card-preview {
+  box-sizing: border-box;
+  max-width: 100%;
+  gap: 1px;
+  padding: 8px;
 }
 
 .mosaic-preview.large {

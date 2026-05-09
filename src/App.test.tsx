@@ -50,6 +50,20 @@ describe('RGB 马赛克游戏原型', () => {
     expect(screen.getByText('当前待鉴定作品')).toBeInTheDocument();
     expect(screen.getByText('作品详情')).toBeInTheDocument();
     expect(screen.getByLabelText('当前待鉴定作品缩略图').children).toHaveLength(256);
+    expect(screen.getByText('皮卡丘像素图标')).toBeInTheDocument();
+    expect(screen.getByLabelText('皮卡丘像素图标缩略图').children).toHaveLength(256);
+    expect(screen.getAllByRole('button', { name: '继续创作' })).toHaveLength(2);
+  });
+
+  it('画作库存里的每张画都可以继续创作', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+    fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
+    fireEvent.click(screen.getAllByRole('button', { name: '继续创作' })[1]);
+
+    expect(screen.getByRole('heading', { name: '16x16 像素画布' })).toBeInTheDocument();
+    expect(screen.getByText('256/256')).toBeInTheDocument();
   });
 
   it('默认待鉴定作品是一张 16x16 哥布林头像', () => {
@@ -121,7 +135,7 @@ describe('RGB 马赛克游戏原型', () => {
 
     expect(screen.getAllByText('当前待鉴定作品').length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole('button', { name: '继续创作' }));
+    fireEvent.click(screen.getAllByRole('button', { name: '继续创作' })[0]);
 
     expect(screen.getByRole('heading', { name: '16x16 像素画布' })).toBeInTheDocument();
   });

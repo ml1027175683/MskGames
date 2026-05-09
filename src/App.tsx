@@ -20,6 +20,7 @@ type MiningRecord = {
 
 type MosaicWork = {
   id: string;
+  title: string;
   status: 'draft' | 'certified' | 'archived';
   width: number;
   height: number;
@@ -66,6 +67,32 @@ const goblinAvatarPattern = [
   '................'
 ];
 
+const pikachuPalette: Record<string, RgbColor | null> = {
+  W: { r: 255, g: 255, b: 255 },
+  K: { r: 0, g: 0, b: 0 },
+  Y: { r: 255, g: 255, b: 16 },
+  R: { r: 255, g: 16, b: 16 }
+};
+
+const pikachuPattern = [
+  'WWWWWWWWWWWWWWWW',
+  'WWWWKWWWWWWKWWWW',
+  'WWWKKWWWWWWKKWWW',
+  'WWWKYYWWWWYYKWWW',
+  'WWWKYYYYYYYYKWWW',
+  'WWWYYYYYYYYYYWWW',
+  'WWYYYYYYYYYYYYWW',
+  'WWYYKKYYYYKKYYWW',
+  'WWYYKKYYYYKKYYWW',
+  'WWYYYRRYYRRYYYWW',
+  'WWWYYYYKKYYYYWWW',
+  'WWWYYYYYYYYYYWWW',
+  'WWWWYYYYYYYYWWWW',
+  'WWWWKYYYYYYKWWWW',
+  'WWWWKKWWWWKKWWWW',
+  'WWWWWWWWWWWWWWWW'
+];
+
 function App() {
   const [activePage, setActivePage] = useState<Page>('mining');
   const [inventory, setInventory] = useState<ColorStack[]>([]);
@@ -73,6 +100,7 @@ function App() {
   const [minedCount, setMinedCount] = useState(0);
   const [miningRecords, setMiningRecords] = useState<MiningRecord[]>([]);
   const [currentDraft, setCurrentDraft] = useState<MosaicWork>(() => createEmptyDraft());
+  const [additionalWorks, setAdditionalWorks] = useState<MosaicWork[]>(() => [createPikachuWork()]);
   const [message, setMessage] = useState('矿机已启动，正在扫描 RGB 光谱。');
 
   useEffect(() => {
@@ -96,7 +124,8 @@ function App() {
   }, []);
 
   const colorKinds = inventory.filter((item) => item.quantity > 0).length;
-  const filledPixels = currentDraft.pixels.filter(Boolean).length;
+  const activeWork = currentDraft;
+  const filledPixels = activeWork.pixels.filter(Boolean).length;
 
   function fillPixel(index: number) {
     if (!selectedColor) {
@@ -157,9 +186,14 @@ function App() {
       {activePage === 'mining' && <MiningPage minedCount={minedCount} records={miningRecords} />}
       {activePage === 'inventory' && (
         <InventoryPage
+          additionalWorks={additionalWorks}
           currentDraft={currentDraft}
           inventory={inventory}
-          onContinueDraft={() => setActivePage('canvas')}
+          onContinueWork={(work) => {
+            setCurrentDraft(work);
+            setAdditionalWorks((current) => current.filter((item) => item.id !== work.id));
+            setActivePage('canvas');
+          }}
           onSelectColor={setSelectedColor}
           selectedColor={selectedColor}
         />
@@ -216,15 +250,17 @@ function MiningPage({ minedCount, records }: { minedCount: number; records: Mini
 }
 
 function InventoryPage({
+  additionalWorks,
   currentDraft,
   inventory,
-  onContinueDraft,
+  onContinueWork,
   onSelectColor,
   selectedColor
 }: {
+  additionalWorks: MosaicWork[];
   currentDraft: MosaicWork;
   inventory: ColorStack[];
-  onContinueDraft: () => void;
+  onContinueWork: (work: MosaicWork) => void;
   onSelectColor: (color: RgbColor) => void;
   selectedColor: RgbColor | null;
 }) {
@@ -240,6 +276,7 @@ function InventoryPage({
   const selectedCatalogColor = selectedColor
     ? colorCatalog.find((item) => colorKey(item.color) === colorKey(selectedColor)) ?? colorCatalog[0]
     : colorCatalog[0];
+  const artworkInventory = [currentDraft, ...additionalWorks];
 
   return (
     <section className="steam-inventory panel">
@@ -278,10 +315,12 @@ function InventoryPage({
           <article>
             <h2>画作库存</h2>
             <div className="item-grid artwork-grid" aria-label="画作库存网格">
-              <DraftCard currentDraft={currentDraft} onContinueDraft={onContinueDraft} />
+              {artworkInventory.map((work) => (
+                <ArtworkCard key={work.id} onContinueWork={onContinueWork} work={work} />
+              ))}
             </div>
           </article>
-          <ArtworkDetail currentDraft={currentDraft} onContinueDraft={onContinueDraft} />
+          <ArtworkDetail currentDraft={currentDraft} onContinueWork={onContinueWork} />
         </section>
       )}
     </section>
@@ -437,31 +476,37 @@ function ColorDetail({ item }: { item: RepresentativeColor & { quantity: number 
   );
 }
 
-function ArtworkDetail({ currentDraft, onContinueDraft }: { currentDraft: MosaicWork; onContinueDraft: () => void }) {
+function ArtworkDetail({ currentDraft, onContinueWork }: { currentDraft: MosaicWork; onContinueWork: (work: MosaicWork) => void }) {
   const filledPixels = currentDraft.pixels.filter(Boolean).length;
 
   return (
     <aside className="detail-pane">
       <h2>作品详情</h2>
       <MosaicPreview className="large" currentDraft={currentDraft} label="当前待鉴定作品详情预览" />
-      <h3>作品详情：当前待鉴定作品</h3>
+      <h3>作品详情：{currentDraft.title}</h3>
       <p><span>状态：</span>待鉴定</p>
       <p><span>画布：</span>{currentDraft.width}x{currentDraft.height}</p>
       <p><span>已填色：</span>{filledPixels}/{pixelCount}</p>
-      <button onClick={onContinueDraft} type="button">打开画布继续创作</button>
+      <button onClick={() => onContinueWork(currentDraft)} type="button">打开画布继续创作</button>
     </aside>
   );
 }
 
-function DraftCard({ currentDraft, onContinueDraft }: { currentDraft: MosaicWork; onContinueDraft: () => void }) {
-  const filledPixels = currentDraft.pixels.filter(Boolean).length;
+function ArtworkCard({
+  onContinueWork,
+  work
+}: {
+  onContinueWork: (work: MosaicWork) => void;
+  work: MosaicWork;
+}) {
+  const filledPixels = work.pixels.filter(Boolean).length;
 
   return (
     <article className="draft-card">
-      <MosaicPreview currentDraft={currentDraft} label="当前待鉴定作品缩略图" />
-      <strong>当前待鉴定作品</strong>
+      <MosaicPreview className="card-preview" currentDraft={work} label={`${work.title}缩略图`} />
+      <strong>{work.title}</strong>
       <span>{filledPixels}/{pixelCount} 像素已填色</span>
-      <button onClick={onContinueDraft} type="button">继续创作</button>
+      <button onClick={() => onContinueWork(work)} type="button">继续创作</button>
     </article>
   );
 }
@@ -496,6 +541,7 @@ function StatusItem({ label, value }: { label: string; value: string }) {
 function createEmptyDraft(): MosaicWork {
   return {
     id: 'current-draft',
+    title: '当前待鉴定作品',
     status: 'draft',
     width: canvasSize,
     height: canvasSize,
@@ -505,7 +551,23 @@ function createEmptyDraft(): MosaicWork {
 }
 
 function createGoblinAvatarPixels(): Array<RgbColor | null> {
-  return goblinAvatarPattern.flatMap((row) => row.split('').map((token) => goblinPalette[token]));
+  return createPatternPixels(goblinAvatarPattern, goblinPalette);
+}
+
+function createPikachuWork(): MosaicWork {
+  return {
+    id: 'pikachu-icon',
+    title: '皮卡丘像素图标',
+    status: 'certified',
+    width: canvasSize,
+    height: canvasSize,
+    pixels: createPatternPixels(pikachuPattern, pikachuPalette),
+    updatedAt: Date.now()
+  };
+}
+
+function createPatternPixels(pattern: string[], palette: Record<string, RgbColor | null>): Array<RgbColor | null> {
+  return pattern.flatMap((row) => row.split('').map((token) => palette[token]));
 }
 
 function addColorToInventory(inventory: ColorStack[], mined: { color: RgbColor; rarity: ColorRarity }): ColorStack[] {
