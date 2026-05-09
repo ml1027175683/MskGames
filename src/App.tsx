@@ -1,16 +1,20 @@
 import './styles.css';
 import { useEffect, useState } from 'react';
-import type { ColorStack, RgbColor } from './domain/rgb';
+import { REPRESENTATIVE_COLORS, mineColor } from './domain/rgb';
+import type { ColorRarity, ColorStack, RepresentativeColor, RgbColor } from './domain/rgb';
 
 const canvasSize = 16;
 const pixelCount = canvasSize * canvasSize;
 const miningIntervalMs = 1500;
 
 type Page = 'mining' | 'inventory' | 'canvas';
+type InventoryTab = 'colors' | 'artworks';
+type CanvasZoom = 50 | 100 | 200 | 400 | 800 | 1600 | 3200;
 
 type MiningRecord = {
   id: string;
   color: RgbColor;
+  rarity: ColorRarity;
   createdAt: number;
 };
 
@@ -30,6 +34,38 @@ const pageLabels: Record<Page, string> = {
   canvas: '画布'
 };
 
+const canvasZoomLevels: CanvasZoom[] = [50, 100, 200, 400, 800, 1600, 3200];
+
+const goblinPalette: Record<string, RgbColor | null> = {
+  '.': null,
+  B: { r: 1, g: 1, b: 2 },
+  K: { r: 0, g: 0, b: 0 },
+  G: { r: 72, g: 152, b: 96 },
+  L: { r: 34, g: 204, b: 112 },
+  R: { r: 255, g: 16, b: 16 },
+  Y: { r: 246, g: 226, b: 18 },
+  P: { r: 126, g: 88, b: 176 }
+};
+
+const goblinAvatarPattern = [
+  '................',
+  '......KKKK......',
+  '....KKGGGGKK....',
+  '...KGGLGGLGGK...',
+  '..KGGGLLLLGGGK..',
+  '.KGGKRRKKRRKGGK.',
+  'KGGGKRRKKRRKGGGK',
+  'KGGGGGKKKKGGGGGK',
+  'KGGGGGYYYYGGGGGK',
+  '.KGGGGGKKGGGGGK.',
+  '..KGGGPPPPGGGK..',
+  '...KKGPPPPGKK...',
+  '....KGGGGGGK....',
+  '.....KGGGGK.....',
+  '......KKKK......',
+  '................'
+];
+
 function App() {
   const [activePage, setActivePage] = useState<Page>('mining');
   const [inventory, setInventory] = useState<ColorStack[]>([]);
@@ -41,18 +77,19 @@ function App() {
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      const color = createRandomColor();
+      const mined = mineColor();
       const record: MiningRecord = {
         id: `${Date.now()}-${Math.random()}`,
-        color,
+        color: mined.color,
+        rarity: mined.rarity,
         createdAt: Date.now()
       };
 
-      setInventory((current) => addColorToInventory(current, color));
-      setSelectedColor((current) => current ?? color);
+      setInventory((current) => addColorToInventory(current, mined));
+      setSelectedColor((current) => current ?? mined.color);
       setMinedCount((current) => current + 1);
       setMiningRecords((current) => [record, ...current].slice(0, 10));
-      setMessage(`挖到 RGB(${color.r}, ${color.g}, ${color.b})`);
+      setMessage(`挖到 ${mined.rarity.label} RGB(${mined.color.r}, ${mined.color.g}, ${mined.color.b})`);
     }, miningIntervalMs);
 
     return () => window.clearInterval(interval);
@@ -166,6 +203,7 @@ function MiningPage({ minedCount, records }: { minedCount: number; records: Mini
               <li key={record.id}>
                 <span className="swatch" style={{ background: formatRgb(record.color) }} />
                 <span>RGB({record.color.r}, {record.color.g}, {record.color.b})</span>
+                <span className={`rarity-badge rarity-${record.rarity.level}`}>等级：{record.rarity.label}</span>
                 <time>{formatTime(record.createdAt)}</time>
                 <strong>+1</strong>
               </li>
@@ -190,27 +228,62 @@ function InventoryPage({
   onSelectColor: (color: RgbColor) => void;
   selectedColor: RgbColor | null;
 }) {
-  return (
-    <section className="inventory-page">
-      <article className="panel">
-        <h2>色块库存</h2>
-        <ColorInventory inventory={inventory} onSelectColor={onSelectColor} selectedColor={selectedColor} />
-      </article>
+  const [inventoryTab, setInventoryTab] = useState<InventoryTab>('colors');
+  const colorCatalog = REPRESENTATIVE_COLORS.map((item) => {
+    const owned = inventory.find((stack) => colorKey(stack.color) === colorKey(item.color));
 
-      <article className="panel mosaic-library">
-        <h2>马赛克作品库</h2>
-        <div className="mosaic-columns">
-          <MosaicColumn title="待鉴定">
-            <DraftCard currentDraft={currentDraft} onContinueDraft={onContinueDraft} />
-          </MosaicColumn>
-          <MosaicColumn title="已鉴定">
-            <p className="empty-state">暂无已鉴定作品。</p>
-          </MosaicColumn>
-          <MosaicColumn title="已归档">
-            <p className="empty-state">归档后会显示 msk://asset/&lt;密钥&gt;。</p>
-          </MosaicColumn>
+    return {
+      ...item,
+      quantity: owned?.quantity ?? 0
+    };
+  });
+  const selectedCatalogColor = selectedColor
+    ? colorCatalog.find((item) => colorKey(item.color) === colorKey(selectedColor)) ?? colorCatalog[0]
+    : colorCatalog[0];
+
+  return (
+    <section className="steam-inventory panel">
+      <div className="inventory-toolbar">
+        <div className="inventory-tabs" aria-label="库存类型">
+          <button className={inventoryTab === 'colors' ? 'active' : ''} onClick={() => setInventoryTab('colors')} type="button">
+            色块库存
+          </button>
+          <button className={inventoryTab === 'artworks' ? 'active' : ''} onClick={() => setInventoryTab('artworks')} type="button">
+            画作库存
+          </button>
         </div>
-      </article>
+        <input aria-label="库存搜索" placeholder="在库存中搜索 RGB 或作品" />
+        <button className="filter-button" type="button">显示高级筛选条件...</button>
+      </div>
+
+      {inventoryTab === 'colors' ? (
+        <section className="inventory-browser">
+          <article>
+            <h2>色块库存</h2>
+            <div className="item-grid" aria-label="色块库存网格">
+              {colorCatalog.map((item) => (
+                <ColorCatalogItem
+                  item={item}
+                  isSelected={colorKey(item.color) === colorKey(selectedCatalogColor.color)}
+                  key={colorKey(item.color)}
+                  onSelectColor={onSelectColor}
+                />
+              ))}
+            </div>
+          </article>
+          <ColorDetail item={selectedCatalogColor} />
+        </section>
+      ) : (
+        <section className="inventory-browser">
+          <article>
+            <h2>画作库存</h2>
+            <div className="item-grid artwork-grid" aria-label="画作库存网格">
+              <DraftCard currentDraft={currentDraft} onContinueDraft={onContinueDraft} />
+            </div>
+          </article>
+          <ArtworkDetail currentDraft={currentDraft} onContinueDraft={onContinueDraft} />
+        </section>
+      )}
     </section>
   );
 }
@@ -230,12 +303,23 @@ function CanvasPage({
   onSelectColor: (color: RgbColor) => void;
   selectedColor: RgbColor | null;
 }) {
+  const [canvasZoom, setCanvasZoom] = useState<CanvasZoom>(100);
+
+  function changeCanvasZoom(direction: -1 | 1) {
+    setCanvasZoom((current) => {
+      const currentIndex = canvasZoomLevels.indexOf(current);
+      const nextIndex = Math.max(0, Math.min(canvasZoomLevels.length - 1, currentIndex + direction));
+
+      return canvasZoomLevels[nextIndex];
+    });
+  }
+
   return (
     <section className="canvas-layout">
       <aside className="panel">
         <h2>可用色块</h2>
         <p className="panel-copy">选择颜色后点击画布。每次填色都会自动保存为待鉴定作品。</p>
-        <ColorInventory inventory={inventory} onSelectColor={onSelectColor} selectedColor={selectedColor} />
+        <ColorInventory inventory={inventory.filter((item) => item.quantity > 0)} onSelectColor={onSelectColor} selectedColor={selectedColor} />
       </aside>
 
       <section className="canvas-panel panel">
@@ -244,17 +328,29 @@ function CanvasPage({
           <span>{selectedColor ? `当前画笔 ${formatRgb(selectedColor)}` : '未选择颜色'}</span>
         </div>
 
-        <div className="pixel-canvas" aria-label="16x16 像素画布">
-          {currentDraft.pixels.map((pixel, index) => (
-            <button
-              aria-label={pixel ? `已填充 ${formatRgb(pixel)}` : `空像素 ${index + 1}`}
-              className="pixel"
-              key={index}
-              onClick={() => onFillPixel(index)}
-              style={{ background: pixel ? formatRgb(pixel) : undefined }}
-              type="button"
-            />
-          ))}
+        <div className="canvas-tools" aria-label="画布缩放控制">
+          <button aria-label="缩小画布" disabled={canvasZoom === 50} onClick={() => changeCanvasZoom(-1)} type="button">
+            <span className="magnifier-icon zoom-out" aria-hidden="true" />
+          </button>
+          <span className="zoom-percent">{canvasZoom}%</span>
+          <button aria-label="放大画布" disabled={canvasZoom === 3200} onClick={() => changeCanvasZoom(1)} type="button">
+            <span className="magnifier-icon zoom-in" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="canvas-stage" aria-label="画布显示区域" data-zoom={canvasZoom}>
+          <div className="pixel-canvas" aria-label="16x16 像素画布" data-zoom={canvasZoom}>
+            {currentDraft.pixels.map((pixel, index) => (
+              <button
+                aria-label={pixel ? `已填充 ${formatRgb(pixel)}` : `空像素 ${index + 1}`}
+                className="pixel"
+                key={index}
+                onClick={() => onFillPixel(index)}
+                style={{ background: pixel ? formatRgb(pixel) : undefined }}
+                type="button"
+              />
+            ))}
+          </div>
         </div>
 
         <p className="autosave-message">{message}</p>
@@ -290,7 +386,10 @@ function ColorInventory({
               type="button"
             >
               <span className="swatch" style={{ background: rgb }} />
-              <span>选择 RGB({item.color.r}, {item.color.g}, {item.color.b})</span>
+              <span>
+                选择 RGB({item.color.r}, {item.color.g}, {item.color.b})
+                {item.rarity ? <small>等级：{item.rarity.label}</small> : null}
+              </span>
               <strong>x{item.quantity}</strong>
             </button>
           );
@@ -300,12 +399,57 @@ function ColorInventory({
   );
 }
 
-function MosaicColumn({ children, title }: { children: React.ReactNode; title: string }) {
+function ColorCatalogItem({
+  isSelected,
+  item,
+  onSelectColor
+}: {
+  isSelected: boolean;
+  item: RepresentativeColor & { quantity: number };
+  onSelectColor: (color: RgbColor) => void;
+}) {
   return (
-    <section className="mosaic-column">
-      <h3>{title}</h3>
-      {children}
-    </section>
+    <button
+      aria-label={`选择 RGB(${item.color.r}, ${item.color.g}, ${item.color.b}) 等级：${item.rarity.label} 数量：${item.quantity}`}
+      className={`catalog-item rarity-border-${item.rarity.level}${isSelected ? ' selected' : ''}${item.quantity === 0 ? ' empty' : ''}`}
+      onClick={() => onSelectColor(item.color)}
+      type="button"
+    >
+      <span className="catalog-swatch" style={{ background: formatRgb(item.color) }} />
+      <span>RGB({item.color.r}, {item.color.g}, {item.color.b})</span>
+      <small>等级：{item.rarity.label}</small>
+      <strong>数量：{item.quantity}</strong>
+    </button>
+  );
+}
+
+function ColorDetail({ item }: { item: RepresentativeColor & { quantity: number } }) {
+  return (
+    <aside className="detail-pane">
+      <h2>物品详情</h2>
+      <div className="detail-swatch" style={{ background: formatRgb(item.color) }} />
+      <h3>RGB({item.color.r}, {item.color.g}, {item.color.b})</h3>
+      <p><span>等级：</span>{item.rarity.label}</p>
+      <p><span>掉落率：</span>{(item.rarity.dropRate * 100).toFixed(1)}%</p>
+      <p><span>库存数量：</span>{item.quantity}</p>
+      <p className="panel-copy">可用于 16x16 创作画布。数量为 0 时只作为图鉴展示。</p>
+    </aside>
+  );
+}
+
+function ArtworkDetail({ currentDraft, onContinueDraft }: { currentDraft: MosaicWork; onContinueDraft: () => void }) {
+  const filledPixels = currentDraft.pixels.filter(Boolean).length;
+
+  return (
+    <aside className="detail-pane">
+      <h2>作品详情</h2>
+      <MosaicPreview className="large" currentDraft={currentDraft} label="当前待鉴定作品详情预览" />
+      <h3>作品详情：当前待鉴定作品</h3>
+      <p><span>状态：</span>待鉴定</p>
+      <p><span>画布：</span>{currentDraft.width}x{currentDraft.height}</p>
+      <p><span>已填色：</span>{filledPixels}/{pixelCount}</p>
+      <button onClick={onContinueDraft} type="button">打开画布继续创作</button>
+    </aside>
   );
 }
 
@@ -314,15 +458,29 @@ function DraftCard({ currentDraft, onContinueDraft }: { currentDraft: MosaicWork
 
   return (
     <article className="draft-card">
-      <div className="mosaic-preview" aria-hidden="true">
-        {currentDraft.pixels.slice(0, 64).map((pixel, index) => (
-          <span key={index} style={{ background: pixel ? formatRgb(pixel) : undefined }} />
-        ))}
-      </div>
+      <MosaicPreview currentDraft={currentDraft} label="当前待鉴定作品缩略图" />
       <strong>当前待鉴定作品</strong>
       <span>{filledPixels}/{pixelCount} 像素已填色</span>
       <button onClick={onContinueDraft} type="button">继续创作</button>
     </article>
+  );
+}
+
+function MosaicPreview({
+  className = '',
+  currentDraft,
+  label
+}: {
+  className?: string;
+  currentDraft: MosaicWork;
+  label: string;
+}) {
+  return (
+    <div className={`mosaic-preview ${className}`.trim()} aria-label={label}>
+      {currentDraft.pixels.map((pixel, index) => (
+        <span key={index} style={{ background: pixel ? formatRgb(pixel) : undefined }} />
+      ))}
+    </div>
   );
 }
 
@@ -341,32 +499,24 @@ function createEmptyDraft(): MosaicWork {
     status: 'draft',
     width: canvasSize,
     height: canvasSize,
-    pixels: Array(pixelCount).fill(null),
+    pixels: createGoblinAvatarPixels(),
     updatedAt: Date.now()
   };
 }
 
-function addColorToInventory(inventory: ColorStack[], color: RgbColor): ColorStack[] {
-  const key = colorKey(color);
+function createGoblinAvatarPixels(): Array<RgbColor | null> {
+  return goblinAvatarPattern.flatMap((row) => row.split('').map((token) => goblinPalette[token]));
+}
+
+function addColorToInventory(inventory: ColorStack[], mined: { color: RgbColor; rarity: ColorRarity }): ColorStack[] {
+  const key = colorKey(mined.color);
   const existing = inventory.find((item) => colorKey(item.color) === key);
 
   if (existing) {
     return inventory.map((item) => (colorKey(item.color) === key ? { ...item, quantity: item.quantity + 1 } : item));
   }
 
-  return [{ color, quantity: 1 }, ...inventory];
-}
-
-function createRandomColor(): RgbColor {
-  return {
-    r: randomChannel(),
-    g: randomChannel(),
-    b: randomChannel()
-  };
-}
-
-function randomChannel(): number {
-  return Math.floor(Math.random() * 256);
+  return [{ color: mined.color, quantity: 1, rarity: mined.rarity }, ...inventory];
 }
 
 function colorKey(color: RgbColor): string {
