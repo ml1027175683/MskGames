@@ -1,11 +1,14 @@
 import './styles.css';
 import { useEffect, useState } from 'react';
-import { REPRESENTATIVE_COLORS, mineColor } from './domain/rgb';
+import type { CSSProperties, FormEvent } from 'react';
+import { REPRESENTATIVE_COLORS, createPixelHash, mineColor } from './domain/rgb';
 import type { ColorRarity, ColorStack, RepresentativeColor, RgbColor } from './domain/rgb';
 
 const canvasSize = 16;
 const pixelCount = canvasSize * canvasSize;
 const miningIntervalMs = 1500;
+const maxDraftWorks = 5;
+let blankDraftSequence = 0;
 
 type Page = 'mining' | 'inventory' | 'canvas';
 type InventoryTab = 'colors' | 'artworks';
@@ -27,6 +30,22 @@ type MosaicWork = {
   pixels: Array<RgbColor | null>;
   updatedAt: number;
   archivedKey?: string;
+};
+
+type MosaicAsset = {
+  id: string;
+  workId: string;
+  title: string;
+  pixelHash: string;
+  creatorId: string;
+  ownerId: string;
+  certifiedAt: number;
+};
+
+type CertificationScan = {
+  asset?: MosaicAsset;
+  phase: 'scanning' | 'complete';
+  work: MosaicWork;
 };
 
 const pageLabels: Record<Page, string> = {
@@ -99,8 +118,11 @@ function App() {
   const [selectedColor, setSelectedColor] = useState<RgbColor | null>(null);
   const [minedCount, setMinedCount] = useState(0);
   const [miningRecords, setMiningRecords] = useState<MiningRecord[]>([]);
-  const [currentDraft, setCurrentDraft] = useState<MosaicWork>(() => createEmptyDraft());
-  const [additionalWorks, setAdditionalWorks] = useState<MosaicWork[]>(() => [createPikachuWork()]);
+  const [artworks, setArtworks] = useState<MosaicWork[]>(() => [createEmptyDraft(), createPikachuWork()]);
+  const [assets, setAssets] = useState<MosaicAsset[]>([]);
+  const [activeWorkId, setActiveWorkId] = useState<string | null>('current-draft');
+  const [selectedArtworkId, setSelectedArtworkId] = useState('current-draft');
+  const [certificationScan, setCertificationScan] = useState<CertificationScan | null>(null);
   const [message, setMessage] = useState('矿机已启动，正在扫描 RGB 光谱。');
 
   useEffect(() => {
@@ -124,10 +146,128 @@ function App() {
   }, []);
 
   const colorKinds = inventory.filter((item) => item.quantity > 0).length;
-  const activeWork = currentDraft;
-  const filledPixels = activeWork.pixels.filter(Boolean).length;
+  const activeWork = activeWorkId ? artworks.find((work) => work.id === activeWorkId) ?? null : null;
+  const selectedArtwork = artworks.find((work) => work.id === selectedArtworkId) ?? activeWork ?? artworks[0];
+  const filledPixels = activeWork?.pixels.filter(Boolean).length ?? 0;
+  const draftWorks = artworks.filter((work) => work.status === 'draft');
+  const draftWorkCount = draftWorks.length;
+
+  function openPage(page: Page) {
+    if (page === 'canvas') {
+      setActiveWorkId(null);
+      setMessage('请新建作品或从库存继续创作。');
+      setActivePage('canvas');
+      return;
+    }
+
+    setActivePage(page);
+  }
+
+  function createNamedWork(title: string) {
+    const normalizedTitle = title.trim();
+
+    if (draftWorkCount >= maxDraftWorks) {
+      setMessage('未鉴定作品已达 5 个，请先鉴定或删除草稿。');
+      return;
+    }
+
+    if (!normalizedTitle) {
+      setMessage('请先输入作品名称。');
+      return;
+    }
+
+    const blankDraft = createBlankDraft(normalizedTitle);
+
+    setArtworks((current) => [blankDraft, ...current]);
+    setActiveWorkId(blankDraft.id);
+    setSelectedArtworkId(blankDraft.id);
+    setMessage(`正在编辑「${blankDraft.title}」。`);
+  }
+
+  function continueWork(work: MosaicWork) {
+    if (work.status === 'certified') {
+      setMessage('作品已鉴定，不能继续编辑。');
+      return;
+    }
+
+    setActiveWorkId(work.id);
+    setSelectedArtworkId(work.id);
+    setActivePage('canvas');
+  }
+
+  function selectCanvasDraft(workId: string) {
+    const work = artworks.find((item) => item.id === workId);
+
+    if (!work || work.status !== 'draft') {
+      return;
+    }
+
+    setActiveWorkId(work.id);
+    setSelectedArtworkId(work.id);
+    setMessage(`正在编辑「${work.title}」。`);
+  }
+
+  async function certifyWork(work: MosaicWork) {
+    const filledPixels = work.pixels.filter(Boolean).length;
+
+    if (certificationScan?.phase === 'scanning') {
+      setMessage('正在鉴定作品，请等待扫描完成。');
+      return;
+    }
+
+    if (work.status === 'certified') {
+      setMessage('作品已鉴定。');
+      return;
+    }
+
+    if (filledPixels !== pixelCount) {
+      setMessage('作品未完成，无法鉴定。');
+      return;
+    }
+
+    setCertificationScan({ phase: 'scanning', work });
+
+    const pixels = work.pixels.filter((pixel): pixel is RgbColor => Boolean(pixel));
+    const pixelHash = await createPixelHash({ width: work.width, height: work.height, pixels });
+    const alreadyCertified = assets.some((asset) => asset.pixelHash === pixelHash);
+
+    if (alreadyCertified) {
+      setCertificationScan(null);
+      setMessage('该像素矩阵已存在，无法重复鉴定。');
+      return;
+    }
+
+    const certifiedAt = Date.now();
+    const asset: MosaicAsset = {
+      id: `asset-${work.id}-${certifiedAt}`,
+      workId: work.id,
+      title: work.title,
+      pixelHash,
+      creatorId: 'local-player',
+      ownerId: 'local-player',
+      certifiedAt
+    };
+    const certifiedWork: MosaicWork = {
+      ...work,
+      status: 'certified',
+      archivedKey: pixelHash,
+      updatedAt: certifiedAt
+    };
+
+    window.setTimeout(() => {
+      setAssets((current) => [asset, ...current]);
+      setArtworks((current) => current.map((item) => (item.id === work.id ? certifiedWork : item)));
+      setCertificationScan({ asset, phase: 'complete', work: certifiedWork });
+      setMessage(`「${work.title}」已鉴定为唯一资产。`);
+    }, 1600);
+  }
 
   function fillPixel(index: number) {
+    if (!activeWork) {
+      setMessage('请先新建作品或从库存继续创作。');
+      return;
+    }
+
     if (!selectedColor) {
       setMessage('请先选择一个库存颜色。');
       return;
@@ -135,23 +275,26 @@ function App() {
 
     const selectedKey = colorKey(selectedColor);
     const selectedStack = inventory.find((item) => colorKey(item.color) === selectedKey);
+    const previousColor = activeWork.pixels[index];
 
     if (!selectedStack || selectedStack.quantity <= 0) {
       setMessage('库存不足，等待矿机产出更多颜色。');
       return;
     }
 
-    setCurrentDraft((current) => ({
-      ...current,
-      pixels: current.pixels.map((pixel, pixelIndex) => (pixelIndex === index ? selectedColor : pixel)),
-      updatedAt: Date.now()
-    }));
-    setInventory((current) =>
-      current.map((item) =>
-        colorKey(item.color) === selectedKey ? { ...item, quantity: item.quantity - 1 } : item
+    setArtworks((current) =>
+      current.map((work) =>
+        work.id === activeWork.id
+          ? {
+              ...work,
+              pixels: work.pixels.map((pixel, pixelIndex) => (pixelIndex === index ? selectedColor : pixel)),
+              updatedAt: Date.now()
+            }
+          : work
       )
     );
-    setMessage(`像素 #${index + 1} 已填充，已自动保存到待鉴定作品。`);
+    setInventory((current) => updateInventoryForPixelFill(current, selectedColor, previousColor));
+    setMessage(`像素 #${index + 1} 已填充，已自动保存到「${activeWork.title}」。`);
   }
 
   return (
@@ -175,7 +318,7 @@ function App() {
           <button
             className={activePage === page ? 'active' : ''}
             key={page}
-            onClick={() => setActivePage(page)}
+            onClick={() => openPage(page)}
             type="button"
           >
             {pageLabels[page]}
@@ -186,28 +329,33 @@ function App() {
       {activePage === 'mining' && <MiningPage minedCount={minedCount} records={miningRecords} />}
       {activePage === 'inventory' && (
         <InventoryPage
-          additionalWorks={additionalWorks}
-          currentDraft={currentDraft}
+          artworks={artworks}
           inventory={inventory}
-          onContinueWork={(work) => {
-            setCurrentDraft(work);
-            setAdditionalWorks((current) => current.filter((item) => item.id !== work.id));
-            setActivePage('canvas');
-          }}
+          assets={assets}
+          onCertifyWork={certifyWork}
+          onContinueWork={continueWork}
+          onSelectArtwork={setSelectedArtworkId}
           onSelectColor={setSelectedColor}
+          selectedArtwork={selectedArtwork}
           selectedColor={selectedColor}
         />
       )}
       {activePage === 'canvas' && (
         <CanvasPage
-          currentDraft={currentDraft}
+          currentDraft={activeWork}
+          draftWorkCount={draftWorkCount}
+          draftWorks={draftWorks}
           inventory={inventory}
+          maxDraftWorks={maxDraftWorks}
           message={message}
+          onCreateWork={createNamedWork}
           onFillPixel={fillPixel}
+          onSelectCanvasDraft={selectCanvasDraft}
           onSelectColor={setSelectedColor}
           selectedColor={selectedColor}
         />
       )}
+      {certificationScan ? <CertificationScanModal onClose={() => setCertificationScan(null)} scan={certificationScan} /> : null}
     </main>
   );
 }
@@ -250,18 +398,24 @@ function MiningPage({ minedCount, records }: { minedCount: number; records: Mini
 }
 
 function InventoryPage({
-  additionalWorks,
-  currentDraft,
+  artworks,
   inventory,
+  assets,
+  onCertifyWork,
   onContinueWork,
+  onSelectArtwork,
   onSelectColor,
+  selectedArtwork,
   selectedColor
 }: {
-  additionalWorks: MosaicWork[];
-  currentDraft: MosaicWork;
+  artworks: MosaicWork[];
   inventory: ColorStack[];
+  assets: MosaicAsset[];
+  onCertifyWork: (work: MosaicWork) => void;
   onContinueWork: (work: MosaicWork) => void;
+  onSelectArtwork: (workId: string) => void;
   onSelectColor: (color: RgbColor) => void;
+  selectedArtwork: MosaicWork;
   selectedColor: RgbColor | null;
 }) {
   const [inventoryTab, setInventoryTab] = useState<InventoryTab>('colors');
@@ -276,7 +430,7 @@ function InventoryPage({
   const selectedCatalogColor = selectedColor
     ? colorCatalog.find((item) => colorKey(item.color) === colorKey(selectedColor)) ?? colorCatalog[0]
     : colorCatalog[0];
-  const artworkInventory = [currentDraft, ...additionalWorks];
+  const artworkInventory = artworks;
 
   return (
     <section className="steam-inventory panel">
@@ -316,11 +470,11 @@ function InventoryPage({
             <h2>画作库存</h2>
             <div className="item-grid artwork-grid" aria-label="画作库存网格">
               {artworkInventory.map((work) => (
-                <ArtworkCard key={work.id} onContinueWork={onContinueWork} work={work} />
+                <ArtworkCard isSelected={work.id === selectedArtwork.id} key={work.id} onSelectArtwork={onSelectArtwork} work={work} />
               ))}
             </div>
           </article>
-          <ArtworkDetail currentDraft={currentDraft} onContinueWork={onContinueWork} />
+          <ArtworkDetail asset={assets.find((item) => item.workId === selectedArtwork.id)} currentDraft={selectedArtwork} onCertifyWork={onCertifyWork} onContinueWork={onContinueWork} />
         </section>
       )}
     </section>
@@ -329,20 +483,33 @@ function InventoryPage({
 
 function CanvasPage({
   currentDraft,
+  draftWorkCount,
+  draftWorks,
   inventory,
+  maxDraftWorks,
   message,
+  onCreateWork,
   onFillPixel,
+  onSelectCanvasDraft,
   onSelectColor,
   selectedColor
 }: {
-  currentDraft: MosaicWork;
+  currentDraft: MosaicWork | null;
+  draftWorkCount: number;
+  draftWorks: MosaicWork[];
   inventory: ColorStack[];
+  maxDraftWorks: number;
   message: string;
+  onCreateWork: (title: string) => void;
   onFillPixel: (index: number) => void;
+  onSelectCanvasDraft: (workId: string) => void;
   onSelectColor: (color: RgbColor) => void;
   selectedColor: RgbColor | null;
 }) {
   const [canvasZoom, setCanvasZoom] = useState<CanvasZoom>(100);
+  const [isNewWorkModalOpen, setIsNewWorkModalOpen] = useState(false);
+  const [newWorkTitle, setNewWorkTitle] = useState('');
+  const hasReachedDraftLimit = draftWorkCount >= maxDraftWorks;
 
   function changeCanvasZoom(direction: -1 | 1) {
     setCanvasZoom((current) => {
@@ -351,6 +518,13 @@ function CanvasPage({
 
       return canvasZoomLevels[nextIndex];
     });
+  }
+
+  function submitNewWork(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onCreateWork(newWorkTitle);
+    setNewWorkTitle('');
+    setIsNewWorkModalOpen(false);
   }
 
   return (
@@ -366,6 +540,33 @@ function CanvasPage({
           <h2>16x16 像素画布</h2>
           <span>{selectedColor ? `当前画笔 ${formatRgb(selectedColor)}` : '未选择颜色'}</span>
         </div>
+
+        <div className="canvas-work-actions">
+          <button disabled={hasReachedDraftLimit} onClick={() => setIsNewWorkModalOpen(true)} type="button">新建画作</button>
+          <label>
+            <span>选择未鉴定画作</span>
+            <select
+              aria-label="选择未鉴定画作"
+              onChange={(event) => onSelectCanvasDraft(event.target.value)}
+              value={currentDraft?.id ?? ''}
+            >
+              <option value="">从未鉴定作品中选择</option>
+              {draftWorks.map((work) => (
+                <option key={work.id} value={work.id}>{work.title}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {hasReachedDraftLimit ? <p className="limit-message">未鉴定作品已达 5 个，请先鉴定或删除草稿。</p> : null}
+
+        {!currentDraft ? (
+          <div className="canvas-empty-state">
+            <h3>还没有选择画作</h3>
+            <p>点击新建画作，或从上方未鉴定画作列表直接进入创作。</p>
+          </div>
+        ) : (
+          <>
 
         <div className="canvas-tools" aria-label="画布缩放控制">
           <button aria-label="缩小画布" disabled={canvasZoom === 50} onClick={() => changeCanvasZoom(-1)} type="button">
@@ -391,9 +592,30 @@ function CanvasPage({
             ))}
           </div>
         </div>
+          </>
+        )}
 
         <p className="autosave-message">{message}</p>
       </section>
+      {isNewWorkModalOpen ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="新建画作">
+          <form className="new-work-modal" onSubmit={submitNewWork}>
+            <h2>新建画作</h2>
+            <label htmlFor="new-work-title">新作品名称</label>
+            <input
+              autoFocus
+              id="new-work-title"
+              onChange={(event) => setNewWorkTitle(event.target.value)}
+              placeholder="输入作品名称"
+              value={newWorkTitle}
+            />
+            <div className="modal-actions">
+              <button onClick={() => setIsNewWorkModalOpen(false)} type="button">取消</button>
+              <button disabled={newWorkTitle.trim().length === 0} type="submit">确认新建</button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -476,52 +698,116 @@ function ColorDetail({ item }: { item: RepresentativeColor & { quantity: number 
   );
 }
 
-function ArtworkDetail({ currentDraft, onContinueWork }: { currentDraft: MosaicWork; onContinueWork: (work: MosaicWork) => void }) {
+function ArtworkDetail({
+  asset,
+  currentDraft,
+  onCertifyWork,
+  onContinueWork
+}: {
+  asset?: MosaicAsset;
+  currentDraft: MosaicWork;
+  onCertifyWork: (work: MosaicWork) => void;
+  onContinueWork: (work: MosaicWork) => void;
+}) {
   const filledPixels = currentDraft.pixels.filter(Boolean).length;
+  const isComplete = filledPixels === pixelCount;
+  const isCertified = currentDraft.status === 'certified';
+  const assetDisplayId = asset ? `asset-${currentDraft.id}` : null;
 
   return (
     <aside className="detail-pane">
       <h2>作品详情</h2>
       <MosaicPreview className="large" currentDraft={currentDraft} label="当前待鉴定作品详情预览" />
       <h3>作品详情：{currentDraft.title}</h3>
-      <p><span>状态：</span>待鉴定</p>
+      <p className="work-status">状态：<span className={`status-pill ${isCertified ? 'certified' : 'draft'}`}>{isCertified ? '已鉴定' : '待鉴定'}</span></p>
       <p><span>画布：</span>{currentDraft.width}x{currentDraft.height}</p>
       <p><span>已填色：</span>{filledPixels}/{pixelCount}</p>
-      <button onClick={() => onContinueWork(currentDraft)} type="button">打开画布继续创作</button>
+      {asset ? (
+        <div className="asset-summary">
+          <p><span>资产编号：</span><strong>{assetDisplayId}</strong></p>
+          <p><span>资产指纹：</span><code>{asset.pixelHash.slice(0, 12)}...</code></p>
+        </div>
+      ) : null}
+      {!isComplete && !isCertified ? <p className="certification-message">作品未完成，无法鉴定</p> : null}
+      {!isCertified ? <button disabled={!isComplete} onClick={() => onCertifyWork(currentDraft)} type="button">鉴定作品</button> : null}
+      {!isCertified ? <button aria-label={`从详情继续创作 ${currentDraft.title}`} onClick={() => onContinueWork(currentDraft)} type="button">打开画布继续创作</button> : null}
     </aside>
   );
 }
 
+function CertificationScanModal({ onClose, scan }: { onClose: () => void; scan: CertificationScan }) {
+  const assetDisplayId = scan.asset ? `asset-${scan.work.id}` : null;
+
+  return (
+    <div className="scan-overlay" role="dialog" aria-modal="true" aria-label="像素扫描鉴定">
+      <section className="scan-modal">
+        <div className="scan-copy">
+          <p className="eyebrow">Certification Scanner</p>
+          <h2>{scan.phase === 'complete' ? '鉴定成功' : '像素扫描鉴定中'}</h2>
+          <p>{scan.phase === 'complete' ? '像素矩阵已生成唯一资产指纹' : `正在扫描 ${scan.work.width}x${scan.work.height} 像素矩阵`}</p>
+        </div>
+
+        <div className={`scan-preview ${scan.phase}`}>
+          <MosaicPreview className="scan-artwork" currentDraft={scan.work} label={`${scan.work.title}扫描预览`} style={{ boxSizing: 'border-box' }} />
+          <span className="scan-line" aria-hidden="true" />
+        </div>
+
+        {scan.asset ? (
+          <div className="scan-result">
+            <p><span>资产编号：</span><strong>{assetDisplayId}</strong></p>
+            <p><span>资产指纹：</span><code>{scan.asset.pixelHash.slice(0, 12)}...</code></p>
+          </div>
+        ) : null}
+
+        {scan.phase === 'complete' ? <button onClick={onClose} type="button">关闭鉴定结果</button> : null}
+      </section>
+    </div>
+  );
+}
+
 function ArtworkCard({
-  onContinueWork,
+  isSelected,
+  onSelectArtwork,
   work
 }: {
-  onContinueWork: (work: MosaicWork) => void;
+  isSelected: boolean;
+  onSelectArtwork: (workId: string) => void;
   work: MosaicWork;
 }) {
   const filledPixels = work.pixels.filter(Boolean).length;
 
   return (
-    <article className="draft-card">
+    <button
+      aria-label={`查看作品 ${work.title}`}
+      className={`draft-card${isSelected ? ' selected' : ''}`}
+      onClick={() => onSelectArtwork(work.id)}
+      type="button"
+    >
       <MosaicPreview className="card-preview" currentDraft={work} label={`${work.title}缩略图`} />
       <strong>{work.title}</strong>
       <span>{filledPixels}/{pixelCount} 像素已填色</span>
-      <button onClick={() => onContinueWork(work)} type="button">继续创作</button>
-    </article>
+      <div className="draft-card-actions" aria-label={`${work.title}鉴定状态`}>
+        <span className={`work-card-status ${work.status === 'certified' ? 'certified' : 'draft'}`}>
+          {work.status === 'certified' ? '已鉴定' : '未鉴定'}
+        </span>
+      </div>
+    </button>
   );
 }
 
 function MosaicPreview({
   className = '',
   currentDraft,
-  label
+  label,
+  style
 }: {
   className?: string;
   currentDraft: MosaicWork;
   label: string;
+  style?: CSSProperties;
 }) {
   return (
-    <div className={`mosaic-preview ${className}`.trim()} aria-label={label}>
+    <div className={`mosaic-preview ${className}`.trim()} aria-label={label} style={style}>
       {currentDraft.pixels.map((pixel, index) => (
         <span key={index} style={{ background: pixel ? formatRgb(pixel) : undefined }} />
       ))}
@@ -550,6 +836,21 @@ function createEmptyDraft(): MosaicWork {
   };
 }
 
+function createBlankDraft(title: string): MosaicWork {
+  const createdAt = Date.now();
+  blankDraftSequence += 1;
+
+  return {
+    id: `blank-draft-${createdAt}-${blankDraftSequence}`,
+    title,
+    status: 'draft',
+    width: canvasSize,
+    height: canvasSize,
+    pixels: Array.from({ length: pixelCount }, () => null),
+    updatedAt: createdAt
+  };
+}
+
 function createGoblinAvatarPixels(): Array<RgbColor | null> {
   return createPatternPixels(goblinAvatarPattern, goblinPalette);
 }
@@ -558,7 +859,7 @@ function createPikachuWork(): MosaicWork {
   return {
     id: 'pikachu-icon',
     title: '皮卡丘像素图标',
-    status: 'certified',
+    status: 'draft',
     width: canvasSize,
     height: canvasSize,
     pixels: createPatternPixels(pikachuPattern, pikachuPalette),
@@ -566,8 +867,24 @@ function createPikachuWork(): MosaicWork {
   };
 }
 
-function createPatternPixels(pattern: string[], palette: Record<string, RgbColor | null>): Array<RgbColor | null> {
-  return pattern.flatMap((row) => row.split('').map((token) => palette[token]));
+export function createPatternPixels(pattern: string[], palette: Record<string, RgbColor | null>): Array<RgbColor | null> {
+  if (pattern.length !== canvasSize) {
+    throw new Error(`像素图案必须包含 ${canvasSize} 行`);
+  }
+
+  return pattern.flatMap((row, rowIndex) => {
+    if (row.length !== canvasSize) {
+      throw new Error(`像素图案第 ${rowIndex + 1} 行必须包含 ${canvasSize} 个标记`);
+    }
+
+    return row.split('').map((token) => {
+      if (!(token in palette)) {
+        throw new Error(`像素图案包含未知标记 ${token}`);
+      }
+
+      return palette[token];
+    });
+  });
 }
 
 function addColorToInventory(inventory: ColorStack[], mined: { color: RgbColor; rarity: ColorRarity }): ColorStack[] {
@@ -579,6 +896,37 @@ function addColorToInventory(inventory: ColorStack[], mined: { color: RgbColor; 
   }
 
   return [{ color: mined.color, quantity: 1, rarity: mined.rarity }, ...inventory];
+}
+
+function updateInventoryForPixelFill(
+  inventory: ColorStack[],
+  selectedColor: RgbColor,
+  previousColor: RgbColor | null
+): ColorStack[] {
+  const selectedKey = colorKey(selectedColor);
+  const previousKey = previousColor ? colorKey(previousColor) : null;
+  const hasPreviousColor = previousKey ? inventory.some((item) => colorKey(item.color) === previousKey) : false;
+
+  const updatedInventory = inventory.map((item) => {
+    const itemKey = colorKey(item.color);
+    let quantity = item.quantity;
+
+    if (itemKey === selectedKey) {
+      quantity -= 1;
+    }
+
+    if (previousKey && itemKey === previousKey) {
+      quantity += 1;
+    }
+
+    return { ...item, quantity };
+  });
+
+  if (previousColor && previousKey && !hasPreviousColor) {
+    return [...updatedInventory, { color: previousColor, quantity: 1 }];
+  }
+
+  return updatedInventory;
 }
 
 function colorKey(color: RgbColor): string {
