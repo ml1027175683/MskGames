@@ -120,6 +120,11 @@ h2 {
   background: rgba(255, 204, 77, 0.14);
 }
 
+.global-message {
+  margin: 12px 0 0;
+  color: #9fb2c5;
+}
+
 .page-grid,
 .inventory-page,
 .canvas-layout {
@@ -477,6 +482,33 @@ h2 {
   margin: 0;
 }
 
+.rename-form {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.rename-form label {
+  display: grid;
+  gap: 6px;
+  color: #8f98a0;
+}
+
+.rename-form input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #f5f1df;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .asset-summary strong,
 .asset-summary code {
   min-width: 0;
@@ -491,6 +523,12 @@ h2 {
   color: #f5f1df;
   background: rgba(0, 220, 255, 0.12);
   cursor: pointer;
+}
+
+.detail-pane .danger-button {
+  border-color: rgba(255, 93, 93, 0.78);
+  color: #ffd7d7;
+  background: rgba(255, 93, 93, 0.14);
 }
 
 .scan-overlay {
@@ -565,6 +603,10 @@ h2 {
   background: rgba(125, 255, 105, 0.08);
 }
 
+.scan-result h3 {
+  margin: 0 0 4px;
+}
+
 .scan-result p {
   margin: 0;
 }
@@ -576,6 +618,12 @@ h2 {
 .scan-result code {
   color: #7dff69;
   font-family: 'Courier New', Consolas, monospace;
+}
+
+.scan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .scan-modal button {

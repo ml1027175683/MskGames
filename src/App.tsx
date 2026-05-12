@@ -8,6 +8,7 @@ const canvasSize = 16;
 const pixelCount = canvasSize * canvasSize;
 const miningIntervalMs = 1500;
 const maxDraftWorks = 5;
+const saveKey = 'rgb-mosaic-save-v1';
 let blankDraftSequence = 0;
 
 type Page = 'mining' | 'inventory' | 'canvas';
@@ -46,6 +47,15 @@ type CertificationScan = {
   asset?: MosaicAsset;
   phase: 'scanning' | 'complete';
   work: MosaicWork;
+};
+
+type SavedGame = {
+  activeWorkId: string | null;
+  artworks: MosaicWork[];
+  assets: MosaicAsset[];
+  inventory: ColorStack[];
+  minedCount: number;
+  selectedArtworkId: string;
 };
 
 const pageLabels: Record<Page, string> = {
@@ -113,15 +123,16 @@ const pikachuPattern = [
 ];
 
 function App() {
+  const initialGame = loadSavedGame();
   const [activePage, setActivePage] = useState<Page>('mining');
-  const [inventory, setInventory] = useState<ColorStack[]>([]);
+  const [inventory, setInventory] = useState<ColorStack[]>(initialGame.inventory);
   const [selectedColor, setSelectedColor] = useState<RgbColor | null>(null);
-  const [minedCount, setMinedCount] = useState(0);
+  const [minedCount, setMinedCount] = useState(initialGame.minedCount);
   const [miningRecords, setMiningRecords] = useState<MiningRecord[]>([]);
-  const [artworks, setArtworks] = useState<MosaicWork[]>(() => [createEmptyDraft(), createPikachuWork()]);
-  const [assets, setAssets] = useState<MosaicAsset[]>([]);
-  const [activeWorkId, setActiveWorkId] = useState<string | null>('current-draft');
-  const [selectedArtworkId, setSelectedArtworkId] = useState('current-draft');
+  const [artworks, setArtworks] = useState<MosaicWork[]>(initialGame.artworks);
+  const [assets, setAssets] = useState<MosaicAsset[]>(initialGame.assets);
+  const [activeWorkId, setActiveWorkId] = useState<string | null>(initialGame.activeWorkId);
+  const [selectedArtworkId, setSelectedArtworkId] = useState(initialGame.selectedArtworkId);
   const [certificationScan, setCertificationScan] = useState<CertificationScan | null>(null);
   const [message, setMessage] = useState('矿机已启动，正在扫描 RGB 光谱。');
 
@@ -144,6 +155,10 @@ function App() {
 
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    saveGame({ activeWorkId, artworks, assets, inventory, minedCount, selectedArtworkId });
+  }, [activeWorkId, artworks, assets, inventory, minedCount, selectedArtworkId]);
 
   const colorKinds = inventory.filter((item) => item.quantity > 0).length;
   const activeWork = activeWorkId ? artworks.find((work) => work.id === activeWorkId) ?? null : null;
@@ -193,6 +208,42 @@ function App() {
     setActiveWorkId(work.id);
     setSelectedArtworkId(work.id);
     setActivePage('canvas');
+  }
+
+  function renameWork(work: MosaicWork, title: string) {
+    const normalizedTitle = title.trim();
+
+    if (work.status === 'certified') {
+      setMessage('已鉴定资产名称已锁定。');
+      return;
+    }
+
+    if (!normalizedTitle) {
+      setMessage('请先输入作品名称。');
+      return;
+    }
+
+    setArtworks((current) =>
+      current.map((item) => (item.id === work.id ? { ...item, title: normalizedTitle, updatedAt: Date.now() } : item))
+    );
+    setMessage(`作品已重命名为「${normalizedTitle}」。`);
+  }
+
+  function deleteDraft(work: MosaicWork) {
+    if (work.status !== 'draft') {
+      setMessage('已鉴定资产不能删除。');
+      return;
+    }
+
+    const refundColors = work.pixels.filter((pixel): pixel is RgbColor => Boolean(pixel));
+    const remainingWorks = artworks.filter((item) => item.id !== work.id);
+    const fallbackWork = remainingWorks[0] ?? null;
+
+    setInventory((current) => refundColors.reduce((next, color) => addColorToInventory(next, { color, rarity: findColorRarity(color) }), current));
+    setArtworks(remainingWorks);
+    setActiveWorkId((current) => (current === work.id ? null : current));
+    setSelectedArtworkId((current) => (current === work.id ? fallbackWork?.id ?? '' : current));
+    setMessage(`已删除「${work.title}」，并返还 ${refundColors.length} 个色块。`);
   }
 
   function selectCanvasDraft(workId: string) {
@@ -326,6 +377,8 @@ function App() {
         ))}
       </nav>
 
+      {activePage !== 'canvas' ? <p className="global-message">{message}</p> : null}
+
       {activePage === 'mining' && <MiningPage minedCount={minedCount} records={miningRecords} />}
       {activePage === 'inventory' && (
         <InventoryPage
@@ -334,6 +387,8 @@ function App() {
           assets={assets}
           onCertifyWork={certifyWork}
           onContinueWork={continueWork}
+          onDeleteDraft={deleteDraft}
+          onRenameWork={renameWork}
           onSelectArtwork={setSelectedArtworkId}
           onSelectColor={setSelectedColor}
           selectedArtwork={selectedArtwork}
@@ -355,7 +410,17 @@ function App() {
           selectedColor={selectedColor}
         />
       )}
-      {certificationScan ? <CertificationScanModal onClose={() => setCertificationScan(null)} scan={certificationScan} /> : null}
+      {certificationScan ? (
+        <CertificationScanModal
+          onClose={() => setCertificationScan(null)}
+          onViewAsset={() => {
+            setSelectedArtworkId(certificationScan.work.id);
+            setActivePage('inventory');
+            setCertificationScan(null);
+          }}
+          scan={certificationScan}
+        />
+      ) : null}
     </main>
   );
 }
@@ -403,6 +468,8 @@ function InventoryPage({
   assets,
   onCertifyWork,
   onContinueWork,
+  onDeleteDraft,
+  onRenameWork,
   onSelectArtwork,
   onSelectColor,
   selectedArtwork,
@@ -413,6 +480,8 @@ function InventoryPage({
   assets: MosaicAsset[];
   onCertifyWork: (work: MosaicWork) => void;
   onContinueWork: (work: MosaicWork) => void;
+  onDeleteDraft: (work: MosaicWork) => void;
+  onRenameWork: (work: MosaicWork, title: string) => void;
   onSelectArtwork: (workId: string) => void;
   onSelectColor: (color: RgbColor) => void;
   selectedArtwork: MosaicWork;
@@ -474,7 +543,14 @@ function InventoryPage({
               ))}
             </div>
           </article>
-          <ArtworkDetail asset={assets.find((item) => item.workId === selectedArtwork.id)} currentDraft={selectedArtwork} onCertifyWork={onCertifyWork} onContinueWork={onContinueWork} />
+          <ArtworkDetail
+            asset={assets.find((item) => item.workId === selectedArtwork.id)}
+            currentDraft={selectedArtwork}
+            onCertifyWork={onCertifyWork}
+            onContinueWork={onContinueWork}
+            onDeleteDraft={onDeleteDraft}
+            onRenameWork={onRenameWork}
+          />
         </section>
       )}
     </section>
@@ -702,17 +778,30 @@ function ArtworkDetail({
   asset,
   currentDraft,
   onCertifyWork,
-  onContinueWork
+  onContinueWork,
+  onDeleteDraft,
+  onRenameWork
 }: {
   asset?: MosaicAsset;
   currentDraft: MosaicWork;
   onCertifyWork: (work: MosaicWork) => void;
   onContinueWork: (work: MosaicWork) => void;
+  onDeleteDraft: (work: MosaicWork) => void;
+  onRenameWork: (work: MosaicWork, title: string) => void;
 }) {
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [nextTitle, setNextTitle] = useState(currentDraft.title);
   const filledPixels = currentDraft.pixels.filter(Boolean).length;
   const isComplete = filledPixels === pixelCount;
   const isCertified = currentDraft.status === 'certified';
   const assetDisplayId = asset ? `asset-${currentDraft.id}` : null;
+
+  function submitRename(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onRenameWork(currentDraft, nextTitle);
+    setIsRenaming(false);
+  }
 
   return (
     <aside className="detail-pane">
@@ -722,20 +811,52 @@ function ArtworkDetail({
       <p className="work-status">状态：<span className={`status-pill ${isCertified ? 'certified' : 'draft'}`}>{isCertified ? '已鉴定' : '待鉴定'}</span></p>
       <p><span>画布：</span>{currentDraft.width}x{currentDraft.height}</p>
       <p><span>已填色：</span>{filledPixels}/{pixelCount}</p>
+      {isCertified ? <p className="certification-message">已鉴定资产名称已锁定</p> : null}
       {asset ? (
         <div className="asset-summary">
           <p><span>资产编号：</span><strong>{assetDisplayId}</strong></p>
           <p><span>资产指纹：</span><code>{asset.pixelHash.slice(0, 12)}...</code></p>
+          <p><span>鉴定时间：</span><strong>{new Date(asset.certifiedAt).toLocaleString()}</strong></p>
+          <p><span>创建者：</span><strong>{asset.creatorId}</strong></p>
+          <p><span>拥有者：</span><strong>{asset.ownerId}</strong></p>
         </div>
       ) : null}
+      {!isCertified && isRenaming ? (
+        <form className="rename-form" onSubmit={submitRename}>
+          <label>
+            <span>作品新名称</span>
+            <input aria-label="作品新名称" onChange={(event) => setNextTitle(event.target.value)} value={nextTitle} />
+          </label>
+          <div className="detail-actions">
+            <button type="submit">确认重命名</button>
+            <button onClick={() => setIsRenaming(false)} type="button">取消</button>
+          </div>
+        </form>
+      ) : null}
       {!isComplete && !isCertified ? <p className="certification-message">作品未完成，无法鉴定</p> : null}
+      {!isCertified && !isRenaming ? <button onClick={() => { setNextTitle(currentDraft.title); setIsRenaming(true); }} type="button">重命名作品</button> : null}
+      {!isCertified && !isConfirmingDelete ? <button className="danger-button" onClick={() => setIsConfirmingDelete(true)} type="button">删除草稿</button> : null}
+      {!isCertified && isConfirmingDelete ? (
+        <div className="detail-actions">
+          <button className="danger-button" onClick={() => onDeleteDraft(currentDraft)} type="button">确认删除草稿</button>
+          <button onClick={() => setIsConfirmingDelete(false)} type="button">取消删除</button>
+        </div>
+      ) : null}
       {!isCertified ? <button disabled={!isComplete} onClick={() => onCertifyWork(currentDraft)} type="button">鉴定作品</button> : null}
       {!isCertified ? <button aria-label={`从详情继续创作 ${currentDraft.title}`} onClick={() => onContinueWork(currentDraft)} type="button">打开画布继续创作</button> : null}
     </aside>
   );
 }
 
-function CertificationScanModal({ onClose, scan }: { onClose: () => void; scan: CertificationScan }) {
+function CertificationScanModal({
+  onClose,
+  onViewAsset,
+  scan
+}: {
+  onClose: () => void;
+  onViewAsset: () => void;
+  scan: CertificationScan;
+}) {
   const assetDisplayId = scan.asset ? `asset-${scan.work.id}` : null;
 
   return (
@@ -754,12 +875,22 @@ function CertificationScanModal({ onClose, scan }: { onClose: () => void; scan: 
 
         {scan.asset ? (
           <div className="scan-result">
+            <h3>资产卡</h3>
+            <p><span>作品名称：</span><strong>{scan.asset.title}</strong></p>
             <p><span>资产编号：</span><strong>{assetDisplayId}</strong></p>
             <p><span>资产指纹：</span><code>{scan.asset.pixelHash.slice(0, 12)}...</code></p>
+            <p><span>鉴定时间：</span><strong>{new Date(scan.asset.certifiedAt).toLocaleString()}</strong></p>
+            <p><span>创建者：</span><strong>{scan.asset.creatorId}</strong></p>
+            <p><span>拥有者：</span><strong>{scan.asset.ownerId}</strong></p>
           </div>
         ) : null}
 
-        {scan.phase === 'complete' ? <button onClick={onClose} type="button">关闭鉴定结果</button> : null}
+        {scan.phase === 'complete' ? (
+          <div className="scan-actions">
+            <button onClick={onViewAsset} type="button">查看资产详情</button>
+            <button onClick={onClose} type="button">关闭鉴定结果</button>
+          </div>
+        ) : null}
       </section>
     </div>
   );
@@ -867,6 +998,54 @@ function createPikachuWork(): MosaicWork {
   };
 }
 
+function createInitialGame(): SavedGame {
+  const artworks = [createEmptyDraft(), createPikachuWork()];
+
+  return {
+    activeWorkId: 'current-draft',
+    artworks,
+    assets: [],
+    inventory: [],
+    minedCount: 0,
+    selectedArtworkId: 'current-draft'
+  };
+}
+
+function loadSavedGame(): SavedGame {
+  try {
+    const rawSave = window.localStorage.getItem(saveKey);
+
+    if (!rawSave) {
+      return createInitialGame();
+    }
+
+    const parsed = JSON.parse(rawSave) as Partial<SavedGame>;
+
+    if (!isSavedGame(parsed)) {
+      return createInitialGame();
+    }
+
+    return parsed;
+  } catch {
+    return createInitialGame();
+  }
+}
+
+function saveGame(game: SavedGame) {
+  window.localStorage.setItem(saveKey, JSON.stringify(game));
+}
+
+function isSavedGame(value: Partial<SavedGame>): value is SavedGame {
+  return (
+    Array.isArray(value.artworks) &&
+    Array.isArray(value.assets) &&
+    Array.isArray(value.inventory) &&
+    typeof value.minedCount === 'number' &&
+    typeof value.selectedArtworkId === 'string' &&
+    (typeof value.activeWorkId === 'string' || value.activeWorkId === null)
+  );
+}
+
 export function createPatternPixels(pattern: string[], palette: Record<string, RgbColor | null>): Array<RgbColor | null> {
   if (pattern.length !== canvasSize) {
     throw new Error(`像素图案必须包含 ${canvasSize} 行`);
@@ -927,6 +1106,10 @@ function updateInventoryForPixelFill(
   }
 
   return updatedInventory;
+}
+
+function findColorRarity(color: RgbColor): ColorRarity {
+  return REPRESENTATIVE_COLORS.find((item) => colorKey(item.color) === colorKey(color))?.rarity ?? REPRESENTATIVE_COLORS[0].rarity;
 }
 
 function colorKey(color: RgbColor): string {
