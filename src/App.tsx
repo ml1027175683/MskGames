@@ -1,6 +1,6 @@
 import './styles.css';
 import { useEffect, useState } from 'react';
-import type { CSSProperties, FormEvent } from 'react';
+import type { CSSProperties, FormEvent, KeyboardEvent } from 'react';
 import { REPRESENTATIVE_COLORS, createPixelHash, mineColor } from './domain/rgb';
 import type { ColorRarity, ColorStack, RepresentativeColor, RgbColor } from './domain/rgb';
 
@@ -9,6 +9,7 @@ const pixelCount = canvasSize * canvasSize;
 const miningIntervalMs = 1500;
 const maxDraftWorks = 5;
 const saveKey = 'rgb-mosaic-save-v1';
+const builtInWorkIds = new Set(['current-draft', 'pikachu-icon']);
 let blankDraftSequence = 0;
 
 type Page = 'mining' | 'inventory' | 'canvas';
@@ -232,6 +233,11 @@ function App() {
   function deleteDraft(work: MosaicWork) {
     if (work.status !== 'draft') {
       setMessage('已鉴定资产不能删除。');
+      return;
+    }
+
+    if (builtInWorkIds.has(work.id)) {
+      setMessage('内置画作不能删除。');
       return;
     }
 
@@ -791,10 +797,12 @@ function ArtworkDetail({
 }) {
   const [isRenaming, setIsRenaming] = useState(false);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
   const [nextTitle, setNextTitle] = useState(currentDraft.title);
   const filledPixels = currentDraft.pixels.filter(Boolean).length;
   const isComplete = filledPixels === pixelCount;
   const isCertified = currentDraft.status === 'certified';
+  const canDeleteDraft = !isCertified && !builtInWorkIds.has(currentDraft.id);
   const assetDisplayId = asset ? `asset-${currentDraft.id}` : null;
 
   function submitRename(event: FormEvent<HTMLFormElement>) {
@@ -803,11 +811,73 @@ function ArtworkDetail({
     setIsRenaming(false);
   }
 
+  function startRename() {
+    if (isCertified) {
+      return;
+    }
+
+    setNextTitle(currentDraft.title);
+    setIsRenaming(true);
+    setIsActionsMenuOpen(false);
+    setIsConfirmingDelete(false);
+  }
+
+  function cancelRename() {
+    setNextTitle(currentDraft.title);
+    setIsRenaming(false);
+  }
+
+  function handleRenameKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Escape') {
+      cancelRename();
+    }
+  }
+
   return (
     <aside className="detail-pane">
-      <h2>作品详情</h2>
+      <div className="detail-pane-header">
+        <h2>作品详情</h2>
+        {!isCertified ? (
+          <div className="detail-actions-menu">
+            <button aria-label="作品操作菜单" className="menu-trigger" onClick={() => setIsActionsMenuOpen((current) => !current)} type="button">...</button>
+            {isActionsMenuOpen ? (
+              <div className="compact-menu" role="menu">
+                {!isConfirmingDelete ? (
+                  <>
+                    <button onClick={startRename} role="menuitem" type="button">重命名</button>
+                    {canDeleteDraft ? <button className="danger-menu-item" onClick={() => setIsConfirmingDelete(true)} role="menuitem" type="button">删除草稿</button> : null}
+                  </>
+                ) : (
+                  <div className="compact-confirm">
+                    <span>确认删除？</span>
+                    <button className="danger-menu-item" onClick={() => onDeleteDraft(currentDraft)} type="button">确认删除草稿</button>
+                    <button onClick={() => setIsConfirmingDelete(false)} type="button">取消</button>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
       <MosaicPreview className="large" currentDraft={currentDraft} label="当前待鉴定作品详情预览" />
-      <h3>作品详情：{currentDraft.title}</h3>
+      {!isCertified && isRenaming ? (
+        <form className="rename-form inline-title-form" onSubmit={submitRename}>
+          <label>
+            <span>作品新名称</span>
+            <input aria-label="作品新名称" onChange={(event) => setNextTitle(event.target.value)} onKeyDown={handleRenameKeyDown} value={nextTitle} />
+          </label>
+          <div className="detail-actions">
+            <button type="submit">确认重命名</button>
+            <button onClick={cancelRename} type="button">取消</button>
+          </div>
+        </form>
+      ) : (
+        <div className="detail-title-row">
+          <h3>
+            作品详情：{currentDraft.title}
+          </h3>
+        </div>
+      )}
       <p className="work-status">状态：<span className={`status-pill ${isCertified ? 'certified' : 'draft'}`}>{isCertified ? '已鉴定' : '待鉴定'}</span></p>
       <p><span>画布：</span>{currentDraft.width}x{currentDraft.height}</p>
       <p><span>已填色：</span>{filledPixels}/{pixelCount}</p>
@@ -821,27 +891,7 @@ function ArtworkDetail({
           <p><span>拥有者：</span><strong>{asset.ownerId}</strong></p>
         </div>
       ) : null}
-      {!isCertified && isRenaming ? (
-        <form className="rename-form" onSubmit={submitRename}>
-          <label>
-            <span>作品新名称</span>
-            <input aria-label="作品新名称" onChange={(event) => setNextTitle(event.target.value)} value={nextTitle} />
-          </label>
-          <div className="detail-actions">
-            <button type="submit">确认重命名</button>
-            <button onClick={() => setIsRenaming(false)} type="button">取消</button>
-          </div>
-        </form>
-      ) : null}
       {!isComplete && !isCertified ? <p className="certification-message">作品未完成，无法鉴定</p> : null}
-      {!isCertified && !isRenaming ? <button onClick={() => { setNextTitle(currentDraft.title); setIsRenaming(true); }} type="button">重命名作品</button> : null}
-      {!isCertified && !isConfirmingDelete ? <button className="danger-button" onClick={() => setIsConfirmingDelete(true)} type="button">删除草稿</button> : null}
-      {!isCertified && isConfirmingDelete ? (
-        <div className="detail-actions">
-          <button className="danger-button" onClick={() => onDeleteDraft(currentDraft)} type="button">确认删除草稿</button>
-          <button onClick={() => setIsConfirmingDelete(false)} type="button">取消删除</button>
-        </div>
-      ) : null}
       {!isCertified ? <button disabled={!isComplete} onClick={() => onCertifyWork(currentDraft)} type="button">鉴定作品</button> : null}
       {!isCertified ? <button aria-label={`从详情继续创作 ${currentDraft.title}`} onClick={() => onContinueWork(currentDraft)} type="button">打开画布继续创作</button> : null}
     </aside>
@@ -1025,10 +1075,32 @@ function loadSavedGame(): SavedGame {
       return createInitialGame();
     }
 
-    return parsed;
+    return normalizeSavedGame(parsed);
   } catch {
     return createInitialGame();
   }
+}
+
+function normalizeSavedGame(game: SavedGame): SavedGame {
+  const artworks = [...game.artworks];
+
+  if (!artworks.some((work) => work.id === 'current-draft')) {
+    artworks.push(createEmptyDraft());
+  }
+
+  if (!artworks.some((work) => work.id === 'pikachu-icon')) {
+    artworks.push(createPikachuWork());
+  }
+
+  const activeWorkId = game.activeWorkId && artworks.some((work) => work.id === game.activeWorkId) ? game.activeWorkId : null;
+  const selectedArtworkId = artworks.some((work) => work.id === game.selectedArtworkId) ? game.selectedArtworkId : artworks[0]?.id ?? '';
+
+  return {
+    ...game,
+    activeWorkId,
+    artworks,
+    selectedArtworkId
+  };
 }
 
 function saveGame(game: SavedGame) {

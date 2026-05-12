@@ -423,6 +423,18 @@ h2 {
   color: #c7d5e0;
 }
 
+.detail-pane-header {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.detail-pane-header h2 {
+  margin: 0;
+}
+
 .detail-pane h3 {
   margin: 16px 0;
   color: #9fc9ff;
@@ -488,6 +500,18 @@ h2 {
   margin: 12px 0;
 }
 
+.inline-title-form {
+  margin-top: 0;
+}
+
+.detail-title-row {
+  display: block;
+}
+
+.detail-title-row h3 {
+  margin-right: 0;
+}
+
 .rename-form label {
   display: grid;
   gap: 6px;
@@ -507,6 +531,60 @@ h2 {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.detail-actions-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.detail-pane .menu-trigger {
+  min-width: 34px;
+  padding: 4px 9px;
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #9fb2c5;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.compact-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  display: grid;
+  min-width: 132px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #111923;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.34);
+}
+
+.detail-pane .compact-menu button {
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  color: #f5f1df;
+  text-align: left;
+  background: transparent;
+}
+
+.detail-pane .compact-menu button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.detail-pane .compact-menu .danger-menu-item {
+  color: #ff9f9f;
+}
+
+.compact-confirm {
+  display: grid;
+  gap: 4px;
+}
+
+.compact-confirm span {
+  padding: 4px 10px;
+  color: #9fb2c5;
+  font-size: 12px;
 }
 
 .asset-summary strong,

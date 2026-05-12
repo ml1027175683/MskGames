@@ -149,7 +149,11 @@ describe('RGB 马赛克游戏原型', () => {
     fireEvent.click(screen.getByRole('button', { name: '库存' }));
     fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
     fireEvent.click(screen.getByRole('button', { name: '查看作品 当前待鉴定作品' }));
-    fireEvent.click(screen.getByRole('button', { name: '重命名作品' }));
+    expect(screen.queryByRole('button', { name: '重命名作品' })).not.toBeInTheDocument();
+    fireEvent.doubleClick(screen.getByRole('heading', { name: '作品详情：当前待鉴定作品' }));
+    expect(screen.queryByLabelText('作品新名称')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '作品操作菜单' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }));
     fireEvent.change(screen.getByLabelText('作品新名称'), { target: { value: '哥布林头像改名' } });
     fireEvent.click(screen.getByRole('button', { name: '确认重命名' }));
 
@@ -172,6 +176,8 @@ describe('RGB 马赛克游戏原型', () => {
     fireEvent.click(await screen.findByRole('button', { name: '查看资产详情' }, { timeout: 3000 }));
 
     expect(screen.queryByRole('button', { name: '重命名作品' })).not.toBeInTheDocument();
+    fireEvent.doubleClick(screen.getByRole('heading', { name: '作品详情：皮卡丘像素图标' }));
+    expect(screen.queryByLabelText('作品新名称')).not.toBeInTheDocument();
     expect(screen.getByText('已鉴定资产名称已锁定')).toBeInTheDocument();
   });
 
@@ -338,33 +344,73 @@ describe('RGB 马赛克游戏原型', () => {
     expect(screen.getByText('未鉴定作品已达 5 个，请先鉴定或删除草稿。')).toBeInTheDocument();
   });
 
-  it('删除未鉴定草稿会从库存移除并返还已填颜色', () => {
+  it('内置哥布林草稿不能被删除', () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole('button', { name: '库存' }));
     fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
     fireEvent.click(screen.getByRole('button', { name: '查看作品 当前待鉴定作品' }));
-    fireEvent.click(screen.getByRole('button', { name: '删除草稿' }));
+
+    fireEvent.click(screen.getByRole('button', { name: '作品操作菜单' }));
+
+    expect(screen.getByRole('menuitem', { name: '重命名' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '删除草稿' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看作品 当前待鉴定作品' })).toBeInTheDocument();
+  });
+
+  it('删除命名草稿会从库存移除并返还已填颜色', () => {
+    render(<App />);
+
+    act(() => {
+      vi.advanceTimersByTime(1600);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+    const minedColorButton = screen.getAllByRole('button', { name: /数量：1/ })[0];
+    const minedColorName = minedColorButton.textContent?.match(/RGB\((\d+), (\d+), (\d+)\)/)?.[0];
+
+    expect(minedColorName).toBeDefined();
+
+    fireEvent.click(minedColorButton);
+    fireEvent.click(screen.getByRole('button', { name: '画布' }));
+    fireEvent.click(screen.getByRole('button', { name: '新建画作' }));
+    fireEvent.change(screen.getByLabelText('新作品名称'), { target: { value: '可删除草稿' } });
+    fireEvent.click(screen.getByRole('button', { name: '确认新建' }));
+    fireEvent.click(screen.getByRole('button', { name: /选择 RGB/ }));
+    fireEvent.click(screen.getAllByRole('button', { name: /空像素/ })[0]);
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+    fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看作品 可删除草稿' }));
+    fireEvent.click(screen.getByRole('button', { name: '作品操作菜单' }));
+    expect(screen.getByRole('menuitem', { name: '重命名' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除草稿' }));
     fireEvent.click(screen.getByRole('button', { name: '确认删除草稿' }));
 
-    expect(screen.queryByRole('button', { name: '查看作品 当前待鉴定作品' })).not.toBeInTheDocument();
-    expect(screen.getByText(/已删除「当前待鉴定作品」，并返还 150 个色块。/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '查看作品 可删除草稿' })).not.toBeInTheDocument();
+    expect(screen.getByText(/已删除「可删除草稿」，并返还 1 个色块。/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '色块库存' }));
 
-    expect(screen.getByRole('button', { name: /RGB\(72, 152, 96\).*数量：[1-9]/ })).toBeInTheDocument();
+    const escapedMinedColorName = minedColorName?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    expect(screen.getByRole('button', { name: new RegExp(`${escapedMinedColorName}.*数量：1`) })).toBeInTheDocument();
   });
 
   it('删除当前画布草稿后画布回到未选择状态', () => {
     render(<App />);
 
+    fireEvent.click(screen.getByRole('button', { name: '画布' }));
+    fireEvent.click(screen.getByRole('button', { name: '新建画作' }));
+    fireEvent.change(screen.getByLabelText('新作品名称'), { target: { value: '当前画布草稿' } });
+    fireEvent.click(screen.getByRole('button', { name: '确认新建' }));
     fireEvent.click(screen.getByRole('button', { name: '库存' }));
     fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
-    fireEvent.click(screen.getByRole('button', { name: '查看作品 当前待鉴定作品' }));
-    fireEvent.click(screen.getByRole('button', { name: '从详情继续创作 当前待鉴定作品' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看作品 当前画布草稿' }));
+    fireEvent.click(screen.getByRole('button', { name: '从详情继续创作 当前画布草稿' }));
     fireEvent.click(screen.getByRole('button', { name: '库存' }));
     fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
-    fireEvent.click(screen.getByRole('button', { name: '删除草稿' }));
+    fireEvent.click(screen.getByRole('button', { name: '作品操作菜单' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除草稿' }));
     fireEvent.click(screen.getByRole('button', { name: '确认删除草稿' }));
     fireEvent.click(screen.getByRole('button', { name: '画布' }));
 
@@ -386,6 +432,27 @@ describe('RGB 马赛克游戏原型', () => {
     fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
 
     expect(screen.getByRole('button', { name: '查看作品 持久化草稿' })).toBeInTheDocument();
+  });
+
+  it('本地存档缺少内置哥布林时会自动补回', () => {
+    window.localStorage.setItem(
+      'rgb-mosaic-save-v1',
+      JSON.stringify({
+        activeWorkId: 'pikachu-icon',
+        artworks: [],
+        assets: [],
+        inventory: [],
+        minedCount: 0,
+        selectedArtworkId: 'pikachu-icon'
+      })
+    );
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+    fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
+
+    expect(screen.getByRole('button', { name: '查看作品 当前待鉴定作品' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看作品 皮卡丘像素图标' })).toBeInTheDocument();
   });
 
   it('本地存档损坏时回退默认画作', () => {
@@ -422,6 +489,7 @@ describe('RGB 马赛克游戏原型', () => {
 
     fireEvent.click(minedColorButton);
     fireEvent.click(screen.getByRole('button', { name: '库存' }));
+    const greenBefore = Number(screen.getByRole('button', { name: /RGB\(72, 152, 96\).*数量：\d+/ }).textContent?.match(/数量：(\d+)/)?.[1] ?? '0');
     fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
     fireEvent.click(screen.getByRole('button', { name: '查看作品 当前待鉴定作品' }));
     fireEvent.click(screen.getByRole('button', { name: '从详情继续创作 当前待鉴定作品' }));
@@ -432,7 +500,7 @@ describe('RGB 马赛克游戏原型', () => {
     const escapedMinedColorName = minedColorName?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     expect(screen.getByRole('button', { name: new RegExp(`${escapedMinedColorName}.*数量：0`) })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /RGB\(72, 152, 96\).*数量：1/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: new RegExp(`RGB\\(72, 152, 96\\).*数量：${greenBefore + 1}`) })).toBeInTheDocument();
   });
 
   it('像素图案必须是 16x16 且只能使用调色板里的标记', () => {
