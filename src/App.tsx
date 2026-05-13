@@ -13,7 +13,7 @@ const builtInWorkIds = new Set(['current-draft', 'pikachu-icon']);
 let blankDraftSequence = 0;
 
 type Page = 'mining' | 'inventory' | 'canvas';
-type InventoryTab = 'colors' | 'artworks';
+type InventoryTab = 'colors' | 'artworks' | 'assets';
 type CanvasZoom = 50 | 100 | 200 | 400 | 800 | 1600 | 3200;
 
 type MiningRecord = {
@@ -132,8 +132,10 @@ function App() {
   const [miningRecords, setMiningRecords] = useState<MiningRecord[]>([]);
   const [artworks, setArtworks] = useState<MosaicWork[]>(initialGame.artworks);
   const [assets, setAssets] = useState<MosaicAsset[]>(initialGame.assets);
+  const [inventoryTab, setInventoryTab] = useState<InventoryTab>('colors');
   const [activeWorkId, setActiveWorkId] = useState<string | null>(initialGame.activeWorkId);
   const [selectedArtworkId, setSelectedArtworkId] = useState(initialGame.selectedArtworkId);
+  const [selectedAssetId, setSelectedAssetId] = useState(initialGame.assets[0]?.id ?? '');
   const [certificationScan, setCertificationScan] = useState<CertificationScan | null>(null);
   const [message, setMessage] = useState('矿机已启动，正在扫描 RGB 光谱。');
 
@@ -164,6 +166,7 @@ function App() {
   const colorKinds = inventory.filter((item) => item.quantity > 0).length;
   const activeWork = activeWorkId ? artworks.find((work) => work.id === activeWorkId) ?? null : null;
   const selectedArtwork = artworks.find((work) => work.id === selectedArtworkId) ?? activeWork ?? artworks[0];
+  const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? assets[0] ?? null;
   const filledPixels = activeWork?.pixels.filter(Boolean).length ?? 0;
   const draftWorks = artworks.filter((work) => work.status === 'draft');
   const draftWorkCount = draftWorks.length;
@@ -312,6 +315,7 @@ function App() {
 
     window.setTimeout(() => {
       setAssets((current) => [asset, ...current]);
+      setSelectedAssetId(asset.id);
       setArtworks((current) => current.map((item) => (item.id === work.id ? certifiedWork : item)));
       setCertificationScan({ asset, phase: 'complete', work: certifiedWork });
       setMessage(`「${work.title}」已鉴定为唯一资产。`);
@@ -390,12 +394,16 @@ function App() {
           artworks={artworks}
           inventory={inventory}
           assets={assets}
+          inventoryTab={inventoryTab}
           onCertifyWork={certifyWork}
           onContinueWork={continueWork}
           onDeleteDraft={deleteDraft}
           onRenameWork={renameWork}
+          onSelectAsset={setSelectedAssetId}
           onSelectArtwork={setSelectedArtworkId}
           onSelectColor={setSelectedColor}
+          onSelectInventoryTab={setInventoryTab}
+          selectedAsset={selectedAsset}
           selectedArtwork={selectedArtwork}
           selectedColor={selectedColor}
         />
@@ -419,7 +427,10 @@ function App() {
         <CertificationScanModal
           onClose={() => setCertificationScan(null)}
           onViewAsset={() => {
-            setSelectedArtworkId(certificationScan.work.id);
+            if (certificationScan.asset) {
+              setSelectedAssetId(certificationScan.asset.id);
+            }
+            setInventoryTab('assets');
             setActivePage('inventory');
             setCertificationScan(null);
           }}
@@ -471,28 +482,35 @@ function InventoryPage({
   artworks,
   inventory,
   assets,
+  inventoryTab,
   onCertifyWork,
   onContinueWork,
   onDeleteDraft,
   onRenameWork,
+  onSelectAsset,
   onSelectArtwork,
   onSelectColor,
+  onSelectInventoryTab,
+  selectedAsset,
   selectedArtwork,
   selectedColor
 }: {
   artworks: MosaicWork[];
   inventory: ColorStack[];
   assets: MosaicAsset[];
+  inventoryTab: InventoryTab;
   onCertifyWork: (work: MosaicWork) => void;
   onContinueWork: (work: MosaicWork) => void;
   onDeleteDraft: (work: MosaicWork) => void;
   onRenameWork: (work: MosaicWork, title: string) => void;
+  onSelectAsset: (assetId: string) => void;
   onSelectArtwork: (workId: string) => void;
   onSelectColor: (color: RgbColor) => void;
+  onSelectInventoryTab: (tab: InventoryTab) => void;
+  selectedAsset: MosaicAsset | null;
   selectedArtwork: MosaicWork;
   selectedColor: RgbColor | null;
 }) {
-  const [inventoryTab, setInventoryTab] = useState<InventoryTab>('colors');
   const colorCatalog = REPRESENTATIVE_COLORS.map((item) => {
     const owned = inventory.find((stack) => colorKey(stack.color) === colorKey(item.color));
 
@@ -504,17 +522,21 @@ function InventoryPage({
   const selectedCatalogColor = selectedColor
     ? colorCatalog.find((item) => colorKey(item.color) === colorKey(selectedColor)) ?? colorCatalog[0]
     : colorCatalog[0];
-  const artworkInventory = artworks;
+  const artworkInventory = artworks.filter((work) => work.status === 'draft');
+  const visibleSelectedArtwork = artworkInventory.find((work) => work.id === selectedArtwork.id) ?? artworkInventory[0] ?? null;
 
   return (
     <section className="steam-inventory panel">
       <div className="inventory-toolbar">
         <div className="inventory-tabs" aria-label="库存类型">
-          <button className={inventoryTab === 'colors' ? 'active' : ''} onClick={() => setInventoryTab('colors')} type="button">
+          <button className={inventoryTab === 'colors' ? 'active' : ''} onClick={() => onSelectInventoryTab('colors')} type="button">
             色块库存
           </button>
-          <button className={inventoryTab === 'artworks' ? 'active' : ''} onClick={() => setInventoryTab('artworks')} type="button">
+          <button className={inventoryTab === 'artworks' ? 'active' : ''} onClick={() => onSelectInventoryTab('artworks')} type="button">
             画作库存
+          </button>
+          <button className={inventoryTab === 'assets' ? 'active' : ''} onClick={() => onSelectInventoryTab('assets')} type="button">
+            资产库
           </button>
         </div>
         <input aria-label="库存搜索" placeholder="在库存中搜索 RGB 或作品" />
@@ -538,24 +560,57 @@ function InventoryPage({
           </article>
           <ColorDetail item={selectedCatalogColor} />
         </section>
-      ) : (
+      ) : inventoryTab === 'artworks' ? (
         <section className="inventory-browser">
           <article>
             <h2>画作库存</h2>
-            <div className="item-grid artwork-grid" aria-label="画作库存网格">
-              {artworkInventory.map((work) => (
-                <ArtworkCard isSelected={work.id === selectedArtwork.id} key={work.id} onSelectArtwork={onSelectArtwork} work={work} />
-              ))}
-            </div>
+            {artworkInventory.length === 0 ? (
+              <p className="empty-state">暂无未鉴定草稿</p>
+            ) : (
+              <div className="item-grid artwork-grid" aria-label="画作库存网格">
+                {artworkInventory.map((work) => (
+                  <ArtworkCard isSelected={work.id === visibleSelectedArtwork?.id} key={work.id} onSelectArtwork={onSelectArtwork} work={work} />
+                ))}
+              </div>
+            )}
           </article>
-          <ArtworkDetail
-            asset={assets.find((item) => item.workId === selectedArtwork.id)}
-            currentDraft={selectedArtwork}
-            onCertifyWork={onCertifyWork}
-            onContinueWork={onContinueWork}
-            onDeleteDraft={onDeleteDraft}
-            onRenameWork={onRenameWork}
-          />
+          {visibleSelectedArtwork ? (
+            <ArtworkDetail
+              asset={assets.find((item) => item.workId === visibleSelectedArtwork.id)}
+              currentDraft={visibleSelectedArtwork}
+              onCertifyWork={onCertifyWork}
+              onContinueWork={onContinueWork}
+              onDeleteDraft={onDeleteDraft}
+              onOpenAsset={(assetId) => {
+                onSelectAsset(assetId);
+                onSelectInventoryTab('assets');
+              }}
+              onRenameWork={onRenameWork}
+            />
+          ) : (
+            <aside className="detail-pane">
+              <h2>作品详情</h2>
+              <p className="empty-state">请选择未鉴定草稿</p>
+            </aside>
+          )}
+        </section>
+      ) : (
+        <section className="inventory-browser">
+          <article>
+            <h2>资产库</h2>
+            {assets.length === 0 ? (
+              <p className="empty-state">暂无已鉴定资产</p>
+            ) : (
+              <div className="item-grid artwork-grid" aria-label="资产库网格">
+                {assets.map((asset) => {
+                  const work = artworks.find((item) => item.id === asset.workId);
+
+                  return <AssetCard asset={asset} isSelected={asset.id === selectedAsset?.id} key={asset.id} onSelectAsset={onSelectAsset} work={work} />;
+                })}
+              </div>
+            )}
+          </article>
+          <AssetDetail asset={selectedAsset} work={selectedAsset ? artworks.find((item) => item.id === selectedAsset.workId) : undefined} />
         </section>
       )}
     </section>
@@ -779,12 +834,69 @@ function ColorDetail({ item }: { item: RepresentativeColor & { quantity: number 
   );
 }
 
+function AssetCard({
+  asset,
+  isSelected,
+  onSelectAsset,
+  work
+}: {
+  asset: MosaicAsset;
+  isSelected: boolean;
+  onSelectAsset: (assetId: string) => void;
+  work?: MosaicWork;
+}) {
+  return (
+    <button
+      aria-label={`查看资产 ${formatAssetDisplayId(asset)}`}
+      className={`draft-card asset-card${isSelected ? ' selected' : ''}`}
+      onClick={() => onSelectAsset(asset.id)}
+      type="button"
+    >
+      {work ? <MosaicPreview className="card-preview" currentDraft={work} label={`${asset.title}资产缩略图`} /> : <div className="asset-placeholder">RGB</div>}
+      <strong>{asset.title}</strong>
+      <span>{formatAssetDisplayId(asset)}</span>
+      <small>{asset.pixelHash.slice(0, 12)}...</small>
+      <small>鉴定于 {new Date(asset.certifiedAt).toLocaleDateString()}</small>
+    </button>
+  );
+}
+
+function AssetDetail({ asset, work }: { asset: MosaicAsset | null; work?: MosaicWork }) {
+  if (!asset) {
+    return (
+      <aside className="detail-pane asset-detail-pane">
+        <h2>资产详情</h2>
+        <p className="empty-state">请选择已鉴定资产</p>
+      </aside>
+    );
+  }
+
+  return (
+    <aside className="detail-pane asset-detail-pane">
+      <h2>资产详情</h2>
+      {work ? <MosaicPreview className="large" currentDraft={work} label={`${asset.title}资产详情预览`} /> : null}
+      <h3>资产详情：{asset.title}</h3>
+      <p className="work-status">状态：<span className="status-pill certified">已鉴定资产</span></p>
+      <div className="asset-summary asset-detail-list">
+        <p><span>资产编号：</span><strong>{formatAssetDisplayId(asset)}</strong></p>
+        <p><span>资产指纹：</span><code>{asset.pixelHash}</code></p>
+        <p><span>创建者：</span><strong>{asset.creatorId}</strong></p>
+        <p><span>拥有者：</span><strong>{asset.ownerId}</strong></p>
+        <p><span>鉴定时间：</span><strong>{new Date(asset.certifiedAt).toLocaleString()}</strong></p>
+        <p><span>关联作品：</span><strong>{asset.workId}</strong></p>
+        <p><span>画布尺寸：</span><strong>{work ? `${work.width}x${work.height}` : '未知'}</strong></p>
+      </div>
+    </aside>
+  );
+}
+
 function ArtworkDetail({
   asset,
   currentDraft,
   onCertifyWork,
   onContinueWork,
   onDeleteDraft,
+  onOpenAsset,
   onRenameWork
 }: {
   asset?: MosaicAsset;
@@ -792,6 +904,7 @@ function ArtworkDetail({
   onCertifyWork: (work: MosaicWork) => void;
   onContinueWork: (work: MosaicWork) => void;
   onDeleteDraft: (work: MosaicWork) => void;
+  onOpenAsset: (assetId: string) => void;
   onRenameWork: (work: MosaicWork, title: string) => void;
 }) {
   const [isRenaming, setIsRenaming] = useState(false);
@@ -889,6 +1002,11 @@ function ArtworkDetail({
           <p><span>创建者：</span><strong>{asset.creatorId}</strong></p>
           <p><span>拥有者：</span><strong>{asset.ownerId}</strong></p>
         </div>
+      ) : null}
+      {isCertified && asset ? (
+        <button aria-label={`查看资产详情：${currentDraft.title}`} onClick={() => onOpenAsset(asset.id)} type="button">
+          查看资产详情
+        </button>
       ) : null}
       {!isComplete && !isCertified ? <p className="certification-message">作品未完成，无法鉴定</p> : null}
       {!isCertified ? <button disabled={!isComplete} onClick={() => onCertifyWork(currentDraft)} type="button">鉴定作品</button> : null}
@@ -1189,6 +1307,10 @@ function colorKey(color: RgbColor): string {
 
 function formatRgb(color: RgbColor): string {
   return `rgb(${color.r}, ${color.g}, ${color.b})`;
+}
+
+function formatAssetDisplayId(asset: MosaicAsset): string {
+  return `asset-${asset.workId}`;
 }
 
 function formatTime(timestamp: number): string {

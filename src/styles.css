@@ -503,6 +503,22 @@ h2 {
   margin: 0;
 }
 
+.asset-detail-pane {
+  border-color: rgba(0, 220, 255, 0.5);
+  background:
+    radial-gradient(circle at top right, rgba(0, 220, 255, 0.14), transparent 38%),
+    linear-gradient(180deg, rgba(28, 35, 42, 0.95), rgba(12, 14, 18, 0.96));
+}
+
+.asset-detail-list p {
+  grid-template-columns: 92px minmax(0, 1fr);
+}
+
+.asset-detail-list code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .rename-form {
   display: grid;
   gap: 10px;
@@ -1034,6 +1050,30 @@ h2 {
 .draft-card span {
   color: #b8af9b;
   font-size: 13px;
+}
+
+.asset-card {
+  border-color: rgba(0, 220, 255, 0.22);
+  background:
+    linear-gradient(135deg, rgba(0, 220, 255, 0.08), transparent 34%),
+    #202832;
+}
+
+.asset-card small {
+  display: block;
+  color: #8f98a0;
+  font-size: 12px;
+}
+
+.asset-placeholder {
+  display: grid;
+  min-height: 96px;
+  place-items: center;
+  border: 1px solid rgba(0, 220, 255, 0.22);
+  color: #00dcff;
+  background: rgba(0, 220, 255, 0.08);
+  font-weight: 700;
+  letter-spacing: 0.2em;
 }
 
 .draft-card-actions {

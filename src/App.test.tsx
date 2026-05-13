@@ -97,7 +97,7 @@ describe('RGB 马赛克游戏原型', () => {
     expect(screen.getByText('作品未完成，无法鉴定')).toBeInTheDocument();
   });
 
-  it('完整作品可以鉴定为唯一资产并禁止继续创作', async () => {
+  it('完整作品鉴定后进入资产库并从画作库存移除', async () => {
     vi.useRealTimers();
     render(<App />);
 
@@ -109,9 +109,15 @@ describe('RGB 马赛克游戏原型', () => {
     expect((await screen.findAllByText('asset-pikachu-icon', undefined, { timeout: 3000 })).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/^[a-f0-9]{12}\.\.\.$/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/asset-pikachu-icon-\d{13}/)).not.toBeInTheDocument();
-    expect(within(screen.getByLabelText('皮卡丘像素图标鉴定状态')).getByText('已鉴定')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '继续创作 皮卡丘像素图标' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '从详情继续创作 皮卡丘像素图标' })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: '查看资产详情' }, { timeout: 3000 }));
+
+    expect(screen.getByRole('heading', { name: '资产详情：皮卡丘像素图标' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
+
+    expect(screen.queryByRole('button', { name: '查看作品 皮卡丘像素图标' })).not.toBeInTheDocument();
+    expect(screen.queryByText('作品详情：皮卡丘像素图标')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看作品 当前待鉴定作品' })).toBeInTheDocument();
   });
 
   it('点击鉴定作品会在当前页播放像素扫描动画并展示鉴定结果', async () => {
@@ -141,6 +147,90 @@ describe('RGB 马赛克游戏原型', () => {
     expect(screen.getAllByText(/^[a-f0-9]{12}\.\.\.$/).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: '查看资产详情' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '关闭鉴定结果' })).toBeInTheDocument();
+  });
+
+  it('资产库空状态和鉴定后资产详情跳转', async () => {
+    vi.useRealTimers();
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+    fireEvent.click(screen.getByRole('button', { name: '资产库' }));
+
+    expect(screen.getByRole('heading', { name: '资产库' })).toBeInTheDocument();
+    expect(screen.getByText('暂无已鉴定资产')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看作品 皮卡丘像素图标' }));
+    fireEvent.click(screen.getByRole('button', { name: '鉴定作品' }));
+    fireEvent.click(await screen.findByRole('button', { name: '查看资产详情' }, { timeout: 3000 }));
+
+    expect(screen.getByRole('button', { name: '资产库' })).toHaveClass('active');
+    expect(screen.getByRole('button', { name: '查看资产 asset-pikachu-icon' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '资产详情：皮卡丘像素图标' })).toBeInTheDocument();
+    expect(screen.getByText('资产编号：')).toBeInTheDocument();
+    expect(screen.getByText('资产指纹：')).toBeInTheDocument();
+    expect(screen.getByText('创建者：')).toBeInTheDocument();
+    expect(screen.getByText('拥有者：')).toBeInTheDocument();
+    expect(screen.getByText('关联作品：')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '作品操作菜单' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '鉴定作品' })).not.toBeInTheDocument();
+  });
+
+  it('没有未鉴定草稿时画作库存显示空状态', () => {
+    const certifiedPixels = Array.from({ length: 256 }, () => ({ r: 12, g: 34, b: 56 }));
+
+    window.localStorage.setItem(
+      'rgb-mosaic-save-v1',
+      JSON.stringify({
+        activeWorkId: null,
+        artworks: [
+          {
+            id: 'current-draft',
+            title: '哥布林资产来源',
+            status: 'certified',
+            width: 16,
+            height: 16,
+            pixels: certifiedPixels,
+            updatedAt: 1,
+            archivedKey: '12,34,56|'.repeat(256)
+          },
+          {
+            id: 'pikachu-icon',
+            title: '皮卡丘资产来源',
+            status: 'certified',
+            width: 16,
+            height: 16,
+            pixels: certifiedPixels,
+            updatedAt: 2,
+            archivedKey: '12,34,56|'.repeat(256)
+          }
+        ],
+        assets: [
+          {
+            id: 'asset-certified-only',
+            workId: 'current-draft',
+            title: '哥布林资产来源',
+            pixelHash: '12,34,56|'.repeat(256),
+            creatorId: 'local-player',
+            ownerId: 'local-player',
+            certifiedAt: 1
+          }
+        ],
+        inventory: [],
+        minedCount: 0,
+        selectedArtworkId: 'current-draft'
+      })
+    );
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+    fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
+
+    expect(screen.getByText('暂无未鉴定草稿')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '查看作品 哥布林资产来源' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '查看作品 皮卡丘资产来源' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '作品详情：哥布林资产来源' })).not.toBeInTheDocument();
   });
 
   it('像素矩阵重复的作品不能重复鉴定为第二个资产', async () => {
@@ -186,6 +276,7 @@ describe('RGB 马赛克游戏原型', () => {
     fireEvent.click(screen.getByRole('button', { name: '鉴定作品' }));
     fireEvent.click(await screen.findByRole('button', { name: '查看资产详情' }, { timeout: 3000 }));
 
+    fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
     fireEvent.click(screen.getByRole('button', { name: '查看作品 重复矩阵 B' }));
     fireEvent.click(screen.getByRole('button', { name: '鉴定作品' }));
 
@@ -216,7 +307,7 @@ describe('RGB 马赛克游戏原型', () => {
     expect(screen.getByRole('option', { name: '哥布林头像改名' })).toBeInTheDocument();
   });
 
-  it('已鉴定作品名称锁定且不允许重命名', async () => {
+  it('已鉴定作品不会留在画作库存中继续重命名', async () => {
     vi.useRealTimers();
     render(<App />);
 
@@ -225,11 +316,12 @@ describe('RGB 马赛克游戏原型', () => {
     fireEvent.click(screen.getByRole('button', { name: '查看作品 皮卡丘像素图标' }));
     fireEvent.click(screen.getByRole('button', { name: '鉴定作品' }));
     fireEvent.click(await screen.findByRole('button', { name: '查看资产详情' }, { timeout: 3000 }));
+    fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
 
+    expect(screen.queryByRole('button', { name: '查看作品 皮卡丘像素图标' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '作品详情：皮卡丘像素图标' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '重命名作品' })).not.toBeInTheDocument();
-    fireEvent.doubleClick(screen.getByRole('heading', { name: '作品详情：皮卡丘像素图标' }));
     expect(screen.queryByLabelText('作品新名称')).not.toBeInTheDocument();
-    expect(screen.getByText('已鉴定资产名称已锁定')).toBeInTheDocument();
   });
 
   it('编辑皮卡丘后回到画作库存仍保留所有作品并保存到皮卡丘', () => {
@@ -547,6 +639,7 @@ describe('RGB 马赛克游戏原型', () => {
     fireEvent.click(screen.getAllByRole('button', { name: '已填充 rgb(72, 152, 96)' })[0]);
 
     fireEvent.click(screen.getByRole('button', { name: '库存' }));
+    fireEvent.click(screen.getByRole('button', { name: '色块库存' }));
 
     const escapedMinedColorName = minedColorName?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
