@@ -57,29 +57,6 @@ describe('RGB 马赛克游戏原型', () => {
     expect(screen.queryByRole('button', { name: '继续创作 皮卡丘像素图标' })).not.toBeInTheDocument();
   });
 
-  it('显示设置支持窗口模式、分辨率和 UI 缩放', () => {
-    render(<App />);
-
-    expect(screen.getByRole('button', { name: '显示设置' })).toBeInTheDocument();
-    expect(screen.getByLabelText('游戏舞台')).toHaveStyle({ '--ui-scale': '1' });
-
-    fireEvent.click(screen.getByRole('button', { name: '显示设置' }));
-
-    expect(screen.getByRole('dialog', { name: '显示设置' })).toBeInTheDocument();
-    expect(screen.getByLabelText('窗口模式')).toHaveValue('windowed');
-    expect(screen.getByLabelText('分辨率')).toHaveValue('1280x720');
-    expect(screen.getByLabelText('UI 缩放')).toHaveValue('100');
-
-    fireEvent.change(screen.getByLabelText('窗口模式'), { target: { value: 'fullscreen' } });
-    fireEvent.change(screen.getByLabelText('分辨率'), { target: { value: '1920x1080' } });
-    fireEvent.change(screen.getByLabelText('UI 缩放'), { target: { value: '125' } });
-    fireEvent.click(screen.getByRole('button', { name: '应用显示设置' }));
-
-    expect(screen.queryByRole('dialog', { name: '显示设置' })).not.toBeInTheDocument();
-    expect(screen.getByLabelText('游戏舞台')).toHaveStyle({ '--ui-scale': '1.25' });
-    expect(window.localStorage.getItem('rgb-mosaic-display-v1')).toContain('1920x1080');
-  });
-
   it('画作库存通过右侧详情继续创作', () => {
     render(<App />);
 
@@ -146,7 +123,7 @@ describe('RGB 马赛克游戏原型', () => {
     fireEvent.click(screen.getByRole('button', { name: '查看作品 皮卡丘像素图标' }));
     fireEvent.click(screen.getByRole('button', { name: '鉴定作品' }));
 
-    const scanDialog = screen.getByRole('dialog', { name: '像素扫描鉴定' });
+    const scanDialog = await screen.findByRole('dialog', { name: '像素扫描鉴定' });
 
     expect(scanDialog).toBeInTheDocument();
     expect(screen.getByText('像素扫描鉴定中')).toBeInTheDocument();
@@ -164,6 +141,57 @@ describe('RGB 马赛克游戏原型', () => {
     expect(screen.getAllByText(/^[a-f0-9]{12}\.\.\.$/).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: '查看资产详情' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '关闭鉴定结果' })).toBeInTheDocument();
+  });
+
+  it('像素矩阵重复的作品不能重复鉴定为第二个资产', async () => {
+    vi.useRealTimers();
+    const duplicatePixels = Array.from({ length: 256 }, () => ({ r: 12, g: 34, b: 56 }));
+
+    window.localStorage.setItem(
+      'rgb-mosaic-save-v1',
+      JSON.stringify({
+        activeWorkId: 'duplicate-a',
+        artworks: [
+          {
+            id: 'duplicate-a',
+            title: '重复矩阵 A',
+            status: 'draft',
+            width: 16,
+            height: 16,
+            pixels: duplicatePixels,
+            updatedAt: 1
+          },
+          {
+            id: 'duplicate-b',
+            title: '重复矩阵 B',
+            status: 'draft',
+            width: 16,
+            height: 16,
+            pixels: duplicatePixels,
+            updatedAt: 2
+          }
+        ],
+        assets: [],
+        inventory: [],
+        minedCount: 0,
+        selectedArtworkId: 'duplicate-a'
+      })
+    );
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+    fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看作品 重复矩阵 A' }));
+    fireEvent.click(screen.getByRole('button', { name: '鉴定作品' }));
+    fireEvent.click(await screen.findByRole('button', { name: '查看资产详情' }, { timeout: 3000 }));
+
+    fireEvent.click(screen.getByRole('button', { name: '查看作品 重复矩阵 B' }));
+    fireEvent.click(screen.getByRole('button', { name: '鉴定作品' }));
+
+    expect(screen.queryByRole('dialog', { name: '像素扫描鉴定' })).not.toBeInTheDocument();
+    expect(await screen.findByText('该像素矩阵已存在，无法重复鉴定。')).toBeInTheDocument();
+    expect(within(screen.getByLabelText('重复矩阵 B鉴定状态')).getByText('未鉴定')).toBeInTheDocument();
   });
 
   it('未鉴定作品可以重命名并同步到库存和画布下拉列表', () => {

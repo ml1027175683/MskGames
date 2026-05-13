@@ -12,7 +12,6 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  overflow: hidden;
   background:
     linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
@@ -22,27 +21,14 @@ body {
   background-size: 34px 34px, 34px 34px, auto, auto, auto;
 }
 
-#root {
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
-}
-
 button {
   font: inherit;
 }
 
 .game-shell {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
-  width: 100vw;
-  height: 100vh;
-  padding: 18px 22px;
-  overflow: hidden;
-  transform: scale(var(--ui-scale));
-  transform-origin: top left;
-  width: calc(100vw / var(--ui-scale));
-  height: calc(100vh / var(--ui-scale));
+  width: min(1440px, calc(100% - 28px));
+  margin: 0 auto;
+  padding: 28px 0;
 }
 
 .status-bar,
@@ -59,31 +45,6 @@ button {
   gap: 24px;
   align-items: end;
   padding: 24px;
-}
-
-.hero-topline {
-  display: flex;
-  gap: 14px;
-  align-items: flex-start;
-  justify-content: space-between;
-}
-
-.settings-button,
-.ghost-button,
-.secondary-button,
-.primary-button {
-  border: 1px solid rgba(245, 241, 223, 0.2);
-  color: #f5f1df;
-  background: rgba(255, 255, 255, 0.06);
-  cursor: pointer;
-}
-
-.settings-button {
-  flex: 0 0 auto;
-  padding: 9px 12px;
-  border-color: rgba(0, 220, 255, 0.45);
-  color: #bff5ff;
-  background: rgba(0, 220, 255, 0.1);
 }
 
 .eyebrow {
@@ -860,8 +821,7 @@ h2 {
   backdrop-filter: blur(10px);
 }
 
-.new-work-modal,
-.display-settings-dialog {
+.new-work-modal {
   display: grid;
   gap: 14px;
   width: min(420px, 100%);
@@ -871,56 +831,16 @@ h2 {
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.46);
 }
 
-.display-settings-dialog {
-  width: min(520px, 100%);
-}
-
-.modal-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
 .new-work-modal h2,
-.new-work-modal label,
-.display-settings-dialog h2,
-.setting-field {
+.new-work-modal label {
   margin: 0;
 }
 
-.new-work-modal input,
-.setting-field select {
+.new-work-modal input {
   padding: 11px 12px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   color: #f5f1df;
   background: rgba(0, 0, 0, 0.24);
-}
-
-.setting-field {
-  display: grid;
-  gap: 7px;
-  color: #c7d5e0;
-}
-
-.display-preview {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px;
-  border: 1px solid rgba(0, 220, 255, 0.24);
-  color: #00dcff;
-  background: rgba(0, 220, 255, 0.08);
-}
-
-.primary-button {
-  border-color: #00dcff;
-  background: rgba(0, 220, 255, 0.12);
-}
-
-.secondary-button,
-.ghost-button {
-  border-color: rgba(245, 241, 223, 0.18);
 }
 
 .modal-actions {
