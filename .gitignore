@@ -8,3 +8,4 @@ dist/
 Thumbs.db
 *.log
 .superpowers/
+src-tauri/target/

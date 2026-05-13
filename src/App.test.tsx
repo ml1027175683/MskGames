@@ -57,6 +57,29 @@ describe('RGB 马赛克游戏原型', () => {
     expect(screen.queryByRole('button', { name: '继续创作 皮卡丘像素图标' })).not.toBeInTheDocument();
   });
 
+  it('显示设置支持窗口模式、分辨率和 UI 缩放', () => {
+    render(<App />);
+
+    expect(screen.getByRole('button', { name: '显示设置' })).toBeInTheDocument();
+    expect(screen.getByLabelText('游戏舞台')).toHaveStyle({ '--ui-scale': '1' });
+
+    fireEvent.click(screen.getByRole('button', { name: '显示设置' }));
+
+    expect(screen.getByRole('dialog', { name: '显示设置' })).toBeInTheDocument();
+    expect(screen.getByLabelText('窗口模式')).toHaveValue('windowed');
+    expect(screen.getByLabelText('分辨率')).toHaveValue('1280x720');
+    expect(screen.getByLabelText('UI 缩放')).toHaveValue('100');
+
+    fireEvent.change(screen.getByLabelText('窗口模式'), { target: { value: 'fullscreen' } });
+    fireEvent.change(screen.getByLabelText('分辨率'), { target: { value: '1920x1080' } });
+    fireEvent.change(screen.getByLabelText('UI 缩放'), { target: { value: '125' } });
+    fireEvent.click(screen.getByRole('button', { name: '应用显示设置' }));
+
+    expect(screen.queryByRole('dialog', { name: '显示设置' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('游戏舞台')).toHaveStyle({ '--ui-scale': '1.25' });
+    expect(window.localStorage.getItem('rgb-mosaic-display-v1')).toContain('1920x1080');
+  });
+
   it('画作库存通过右侧详情继续创作', () => {
     render(<App />);
 

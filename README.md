@@ -86,6 +86,7 @@
 | 前端 | Vite + React + TypeScript |
 | 测试 | Vitest + Testing Library |
 | 样式 | CSS |
+| 桌面客户端 | Tauri |
 | 包管理 | npm |
 
 ## 本地运行
@@ -117,6 +118,8 @@ npm.cmd test
 npm.cmd run test:watch
 npm.cmd run build
 npm.cmd run preview
+npm.cmd run tauri:dev
+npm.cmd run tauri:build
 ```
 
 命令说明：
@@ -129,6 +132,35 @@ npm.cmd run preview
 | `npm.cmd run test:watch` | 以监听模式运行测试 |
 | `npm.cmd run build` | 执行 TypeScript 检查并构建生产版本 |
 | `npm.cmd run preview` | 本地预览生产构建 |
+| `npm.cmd run tauri:dev` | 启动 Tauri 桌面开发窗口 |
+| `npm.cmd run tauri:build` | 构建 Windows 桌面客户端 |
+
+## 桌面客户端
+
+当前项目已经加入 Tauri 桌面壳，可把现有 React/Vite 前端封装为 Windows 桌面客户端。
+
+桌面开发和打包需要先安装 Rust 工具链，并确保 Windows WebView2 Runtime 可用：
+
+```bash
+rustc --version
+cargo --version
+```
+
+安装环境后可运行：
+
+```bash
+npm.cmd run tauri:dev
+npm.cmd run tauri:build
+```
+
+Tauri 构建产物通常位于：
+
+```text
+src-tauri/target/release/
+src-tauri/target/release/bundle/
+```
+
+第一版桌面客户端只封装当前网页 MVP，不包含 Steam SDK、自动更新、后端云存档或安装器美化。
 
 ## 交互说明
 
@@ -156,6 +188,7 @@ src/
 docs/
   assets/                 # README 海报和视觉说明资源
   superpowers/specs/      # 游戏设计文档
+src-tauri/                # Tauri 桌面客户端配置和 Rust 入口
 ```
 
 ## 项目文档

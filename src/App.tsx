@@ -9,12 +9,22 @@ const pixelCount = canvasSize * canvasSize;
 const miningIntervalMs = 1500;
 const maxDraftWorks = 5;
 const saveKey = 'rgb-mosaic-save-v1';
+const displaySaveKey = 'rgb-mosaic-display-v1';
 const builtInWorkIds = new Set(['current-draft', 'pikachu-icon']);
 let blankDraftSequence = 0;
 
 type Page = 'mining' | 'inventory' | 'canvas';
 type InventoryTab = 'colors' | 'artworks';
 type CanvasZoom = 50 | 100 | 200 | 400 | 800 | 1600 | 3200;
+type WindowMode = 'windowed' | 'fullscreen';
+type ResolutionValue = '1280x720' | '1366x768' | '1600x900' | '1920x1080';
+type UiScale = 90 | 100 | 110 | 125;
+
+type DisplaySettings = {
+  resolution: ResolutionValue;
+  uiScale: UiScale;
+  windowMode: WindowMode;
+};
 
 type MiningRecord = {
   id: string;
@@ -66,6 +76,18 @@ const pageLabels: Record<Page, string> = {
 };
 
 const canvasZoomLevels: CanvasZoom[] = [50, 100, 200, 400, 800, 1600, 3200];
+const resolutionOptions: Array<{ label: string; value: ResolutionValue; width: number; height: number }> = [
+  { label: '1280 x 720', value: '1280x720', width: 1280, height: 720 },
+  { label: '1366 x 768', value: '1366x768', width: 1366, height: 768 },
+  { label: '1600 x 900', value: '1600x900', width: 1600, height: 900 },
+  { label: '1920 x 1080', value: '1920x1080', width: 1920, height: 1080 }
+];
+const uiScaleOptions: UiScale[] = [90, 100, 110, 125];
+const defaultDisplaySettings: DisplaySettings = {
+  resolution: '1280x720',
+  uiScale: 100,
+  windowMode: 'windowed'
+};
 
 const goblinPalette: Record<string, RgbColor | null> = {
   '.': null,
@@ -135,6 +157,8 @@ function App() {
   const [activeWorkId, setActiveWorkId] = useState<string | null>(initialGame.activeWorkId);
   const [selectedArtworkId, setSelectedArtworkId] = useState(initialGame.selectedArtworkId);
   const [certificationScan, setCertificationScan] = useState<CertificationScan | null>(null);
+  const [displaySettings, setDisplaySettings] = useState<DisplaySettings>(loadDisplaySettings());
+  const [isDisplaySettingsOpen, setIsDisplaySettingsOpen] = useState(false);
   const [message, setMessage] = useState('矿机已启动，正在扫描 RGB 光谱。');
 
   useEffect(() => {
@@ -160,6 +184,11 @@ function App() {
   useEffect(() => {
     saveGame({ activeWorkId, artworks, assets, inventory, minedCount, selectedArtworkId });
   }, [activeWorkId, artworks, assets, inventory, minedCount, selectedArtworkId]);
+
+  useEffect(() => {
+    saveDisplaySettings(displaySettings);
+    applyDesktopDisplaySettings(displaySettings).catch(() => undefined);
+  }, [displaySettings]);
 
   const colorKinds = inventory.filter((item) => item.quantity > 0).length;
   const activeWork = activeWorkId ? artworks.find((work) => work.id === activeWorkId) ?? null : null;
@@ -355,10 +384,19 @@ function App() {
   }
 
   return (
-    <main className="game-shell">
+    <main
+      aria-label="游戏舞台"
+      className="game-shell"
+      style={{ '--ui-scale': String(displaySettings.uiScale / 100) } as CSSProperties}
+    >
       <section className="status-bar" aria-label="游戏状态">
         <div>
-          <p className="eyebrow">Live RGB Mining</p>
+          <div className="hero-topline">
+            <p className="eyebrow">Live RGB Mining</p>
+            <button className="settings-button" onClick={() => setIsDisplaySettingsOpen(true)} type="button">
+              显示设置
+            </button>
+          </div>
           <h1>RGB 马赛克矿场</h1>
         </div>
 
@@ -427,6 +465,16 @@ function App() {
           scan={certificationScan}
         />
       ) : null}
+      {isDisplaySettingsOpen ? (
+        <DisplaySettingsDialog
+          onApply={(settings) => {
+            setDisplaySettings(settings);
+            setIsDisplaySettingsOpen(false);
+          }}
+          onClose={() => setIsDisplaySettingsOpen(false)}
+          settings={displaySettings}
+        />
+      ) : null}
     </main>
   );
 }
@@ -465,6 +513,90 @@ function MiningPage({ minedCount, records }: { minedCount: number; records: Mini
         )}
       </article>
     </section>
+  );
+}
+
+function DisplaySettingsDialog({
+  onApply,
+  onClose,
+  settings
+}: {
+  onApply: (settings: DisplaySettings) => void;
+  onClose: () => void;
+  settings: DisplaySettings;
+}) {
+  const [draftSettings, setDraftSettings] = useState(settings);
+
+  return (
+    <div className="modal-backdrop">
+      <section aria-label="显示设置" className="modal display-settings-dialog" role="dialog">
+        <div className="modal-heading">
+          <div>
+            <p className="eyebrow">Video Options</p>
+            <h2>显示设置</h2>
+          </div>
+          <button className="ghost-button" onClick={onClose} type="button">
+            关闭
+          </button>
+        </div>
+
+        <label className="setting-field">
+          <span>窗口模式</span>
+          <select
+            aria-label="窗口模式"
+            onChange={(event) => setDraftSettings({ ...draftSettings, windowMode: event.target.value as WindowMode })}
+            value={draftSettings.windowMode}
+          >
+            <option value="windowed">窗口化</option>
+            <option value="fullscreen">全屏</option>
+          </select>
+        </label>
+
+        <label className="setting-field">
+          <span>分辨率</span>
+          <select
+            aria-label="分辨率"
+            onChange={(event) => setDraftSettings({ ...draftSettings, resolution: event.target.value as ResolutionValue })}
+            value={draftSettings.resolution}
+          >
+            {resolutionOptions.map((resolution) => (
+              <option key={resolution.value} value={resolution.value}>
+                {resolution.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="setting-field">
+          <span>UI 缩放</span>
+          <select
+            aria-label="UI 缩放"
+            onChange={(event) => setDraftSettings({ ...draftSettings, uiScale: Number(event.target.value) as UiScale })}
+            value={String(draftSettings.uiScale)}
+          >
+            {uiScaleOptions.map((scale) => (
+              <option key={scale} value={scale}>
+                {scale}%
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="display-preview" aria-hidden="true">
+          <span>{draftSettings.resolution}</span>
+          <strong>{draftSettings.windowMode === 'fullscreen' ? '全屏' : '窗口化'}</strong>
+        </div>
+
+        <div className="modal-actions">
+          <button className="secondary-button" onClick={onClose} type="button">
+            取消
+          </button>
+          <button className="primary-button" onClick={() => onApply(draftSettings)} type="button">
+            应用显示设置
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -1105,6 +1237,51 @@ function normalizeSavedGame(game: SavedGame): SavedGame {
 
 function saveGame(game: SavedGame) {
   window.localStorage.setItem(saveKey, JSON.stringify(game));
+}
+
+function loadDisplaySettings(): DisplaySettings {
+  try {
+    const rawSave = window.localStorage.getItem(displaySaveKey);
+
+    if (!rawSave) {
+      return defaultDisplaySettings;
+    }
+
+    const parsed = JSON.parse(rawSave) as Partial<DisplaySettings>;
+
+    return isDisplaySettings(parsed) ? parsed : defaultDisplaySettings;
+  } catch {
+    return defaultDisplaySettings;
+  }
+}
+
+function saveDisplaySettings(settings: DisplaySettings) {
+  window.localStorage.setItem(displaySaveKey, JSON.stringify(settings));
+}
+
+function isDisplaySettings(value: Partial<DisplaySettings>): value is DisplaySettings {
+  return (
+    (value.windowMode === 'windowed' || value.windowMode === 'fullscreen') &&
+    resolutionOptions.some((resolution) => resolution.value === value.resolution) &&
+    uiScaleOptions.some((scale) => scale === value.uiScale)
+  );
+}
+
+async function applyDesktopDisplaySettings(settings: DisplaySettings) {
+  if (!('__TAURI_INTERNALS__' in window)) {
+    return;
+  }
+
+  const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
+  const appWindow = getCurrentWindow();
+
+  await appWindow.setFullscreen(settings.windowMode === 'fullscreen');
+
+  if (settings.windowMode === 'windowed') {
+    const resolution = resolutionOptions.find((item) => item.value === settings.resolution) ?? resolutionOptions[0];
+    await appWindow.setSize(new LogicalSize(resolution.width, resolution.height));
+    await appWindow.center();
+  }
 }
 
 function isSavedGame(value: Partial<SavedGame>): value is SavedGame {
