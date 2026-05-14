@@ -57,6 +57,38 @@ describe('RGB 马赛克游戏原型', () => {
     expect(screen.queryByRole('button', { name: '继续创作 皮卡丘像素图标' })).not.toBeInTheDocument();
   });
 
+  it('色块库存可以切换仅显示可用颜色', () => {
+    render(<App />);
+
+    act(() => {
+      vi.advanceTimersByTime(1600);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+
+    expect(screen.getAllByRole('button', { name: /数量：0/ }).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: '仅显示可用颜色' }));
+
+    expect(screen.queryByRole('button', { name: /数量：0/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /数量：1/ }).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: '显示全部颜色' }));
+
+    expect(screen.getAllByRole('button', { name: /数量：0/ }).length).toBeGreaterThan(0);
+  });
+
+  it('画布页可以切换显示全部库存颜色或仅显示可用颜色', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '画布' }));
+
+    expect(screen.queryByRole('button', { name: /选择 RGB/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '显示全部颜色' }));
+
+    expect(screen.getAllByRole('button', { name: /选择 RGB/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: /x0/ }).length).toBeGreaterThan(0);
+  });
+
   it('画作库存通过右侧详情继续创作', () => {
     render(<App />);
 
@@ -231,6 +263,77 @@ describe('RGB 马赛克游戏原型', () => {
     expect(screen.queryByRole('button', { name: '查看作品 哥布林资产来源' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '查看作品 皮卡丘资产来源' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '作品详情：哥布林资产来源' })).not.toBeInTheDocument();
+  });
+
+  it('资产库可以在多个资产之间切换右侧详情', () => {
+    const redPixels = Array.from({ length: 256 }, () => ({ r: 255, g: 0, b: 0 }));
+    const bluePixels = Array.from({ length: 256 }, () => ({ r: 0, g: 0, b: 255 }));
+
+    window.localStorage.setItem(
+      'rgb-mosaic-save-v1',
+      JSON.stringify({
+        activeWorkId: null,
+        artworks: [
+          {
+            id: 'current-draft',
+            title: '红色资产来源',
+            status: 'certified',
+            width: 16,
+            height: 16,
+            pixels: redPixels,
+            updatedAt: 1,
+            archivedKey: '255,0,0|'.repeat(256)
+          },
+          {
+            id: 'pikachu-icon',
+            title: '蓝色资产来源',
+            status: 'certified',
+            width: 16,
+            height: 16,
+            pixels: bluePixels,
+            updatedAt: 2,
+            archivedKey: '0,0,255|'.repeat(256)
+          }
+        ],
+        assets: [
+          {
+            id: 'asset-red',
+            workId: 'current-draft',
+            title: '红色资产来源',
+            pixelHash: '255,0,0|'.repeat(256),
+            creatorId: 'local-player',
+            ownerId: 'local-player',
+            certifiedAt: 1
+          },
+          {
+            id: 'asset-blue',
+            workId: 'pikachu-icon',
+            title: '蓝色资产来源',
+            pixelHash: '0,0,255|'.repeat(256),
+            creatorId: 'local-player',
+            ownerId: 'local-player',
+            certifiedAt: 2
+          }
+        ],
+        inventory: [],
+        minedCount: 0,
+        selectedArtworkId: 'current-draft'
+      })
+    );
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+    fireEvent.click(screen.getByRole('button', { name: '资产库' }));
+
+    expect(screen.getByRole('button', { name: '查看资产 asset-current-draft' })).toHaveClass('selected');
+    expect(screen.getByRole('heading', { name: '资产详情：红色资产来源' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '查看资产 asset-pikachu-icon' }));
+
+    expect(screen.getByRole('button', { name: '查看资产 asset-pikachu-icon' })).toHaveClass('selected');
+    expect(screen.getByRole('heading', { name: '资产详情：蓝色资产来源' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '资产详情：红色资产来源' })).not.toBeInTheDocument();
   });
 
   it('像素矩阵重复的作品不能重复鉴定为第二个资产', async () => {
@@ -575,6 +678,29 @@ describe('RGB 马赛克游戏原型', () => {
     fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
 
     expect(screen.getByRole('button', { name: '查看作品 持久化草稿' })).toBeInTheDocument();
+  });
+
+  it('重新打开应用后会恢复已鉴定资产库', async () => {
+    vi.useRealTimers();
+    const firstRender = render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+    fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看作品 皮卡丘像素图标' }));
+    fireEvent.click(screen.getByRole('button', { name: '鉴定作品' }));
+    fireEvent.click(await screen.findByRole('button', { name: '查看资产详情' }, { timeout: 3000 }));
+    firstRender.unmount();
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+    fireEvent.click(screen.getByRole('button', { name: '资产库' }));
+
+    expect(screen.getByRole('button', { name: '查看资产 asset-pikachu-icon' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '资产详情：皮卡丘像素图标' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
+
+    expect(screen.queryByRole('button', { name: '查看作品 皮卡丘像素图标' })).not.toBeInTheDocument();
   });
 
   it('本地存档缺少内置哥布林时会自动补回', () => {

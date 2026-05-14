@@ -175,6 +175,31 @@ h2 {
   margin-bottom: 14px;
 }
 
+.section-heading-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.section-heading-row h2 {
+  margin: 0;
+}
+
+.filter-toggle {
+  padding: 7px 10px;
+  border: 1px solid rgba(245, 241, 223, 0.16);
+  color: #f5f1df;
+  background: rgba(5, 5, 5, 0.45);
+  cursor: pointer;
+}
+
+.filter-toggle:hover {
+  border-color: #00dcff;
+  background: rgba(0, 220, 255, 0.12);
+}
+
 .split-heading {
   justify-content: space-between;
 }

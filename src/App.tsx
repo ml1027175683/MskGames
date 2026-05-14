@@ -511,6 +511,7 @@ function InventoryPage({
   selectedArtwork: MosaicWork;
   selectedColor: RgbColor | null;
 }) {
+  const [showOnlyOwnedColors, setShowOnlyOwnedColors] = useState(false);
   const colorCatalog = REPRESENTATIVE_COLORS.map((item) => {
     const owned = inventory.find((stack) => colorKey(stack.color) === colorKey(item.color));
 
@@ -522,6 +523,7 @@ function InventoryPage({
   const selectedCatalogColor = selectedColor
     ? colorCatalog.find((item) => colorKey(item.color) === colorKey(selectedColor)) ?? colorCatalog[0]
     : colorCatalog[0];
+  const visibleColorCatalog = showOnlyOwnedColors ? colorCatalog.filter((item) => item.quantity > 0) : colorCatalog;
   const artworkInventory = artworks.filter((work) => work.status === 'draft');
   const visibleSelectedArtwork = artworkInventory.find((work) => work.id === selectedArtwork.id) ?? artworkInventory[0] ?? null;
 
@@ -546,17 +548,26 @@ function InventoryPage({
       {inventoryTab === 'colors' ? (
         <section className="inventory-browser">
           <article>
-            <h2>色块库存</h2>
-            <div className="item-grid" aria-label="色块库存网格">
-              {colorCatalog.map((item) => (
-                <ColorCatalogItem
-                  item={item}
-                  isSelected={colorKey(item.color) === colorKey(selectedCatalogColor.color)}
-                  key={colorKey(item.color)}
-                  onSelectColor={onSelectColor}
-                />
-              ))}
+            <div className="section-heading-row">
+              <h2>色块库存</h2>
+              <button className="filter-toggle" onClick={() => setShowOnlyOwnedColors((current) => !current)} type="button">
+                {showOnlyOwnedColors ? '显示全部颜色' : '仅显示可用颜色'}
+              </button>
             </div>
+            {visibleColorCatalog.length === 0 ? (
+              <p className="empty-state">暂无可用颜色</p>
+            ) : (
+              <div className="item-grid" aria-label="色块库存网格">
+                {visibleColorCatalog.map((item) => (
+                  <ColorCatalogItem
+                    item={item}
+                    isSelected={colorKey(item.color) === colorKey(selectedCatalogColor.color)}
+                    key={colorKey(item.color)}
+                    onSelectColor={onSelectColor}
+                  />
+                ))}
+              </div>
+            )}
           </article>
           <ColorDetail item={selectedCatalogColor} />
         </section>
@@ -644,8 +655,18 @@ function CanvasPage({
 }) {
   const [canvasZoom, setCanvasZoom] = useState<CanvasZoom>(100);
   const [isNewWorkModalOpen, setIsNewWorkModalOpen] = useState(false);
+  const [showAllCanvasColors, setShowAllCanvasColors] = useState(false);
   const [newWorkTitle, setNewWorkTitle] = useState('');
   const hasReachedDraftLimit = draftWorkCount >= maxDraftWorks;
+  const canvasColorCatalog = REPRESENTATIVE_COLORS.map((item) => {
+    const owned = inventory.find((stack) => colorKey(stack.color) === colorKey(item.color));
+
+    return {
+      ...item,
+      quantity: owned?.quantity ?? 0
+    };
+  });
+  const canvasColors = showAllCanvasColors ? canvasColorCatalog : canvasColorCatalog.filter((item) => item.quantity > 0);
 
   function changeCanvasZoom(direction: -1 | 1) {
     setCanvasZoom((current) => {
@@ -666,9 +687,14 @@ function CanvasPage({
   return (
     <section className="canvas-layout">
       <aside className="panel">
-        <h2>可用色块</h2>
+        <div className="section-heading-row">
+          <h2>可用色块</h2>
+          <button className="filter-toggle" onClick={() => setShowAllCanvasColors((current) => !current)} type="button">
+            {showAllCanvasColors ? '仅显示可用颜色' : '显示全部颜色'}
+          </button>
+        </div>
         <p className="panel-copy">选择颜色后点击画布。每次填色都会自动保存为待鉴定作品。</p>
-        <ColorInventory inventory={inventory.filter((item) => item.quantity > 0)} onSelectColor={onSelectColor} selectedColor={selectedColor} />
+        <ColorInventory inventory={canvasColors} onSelectColor={onSelectColor} selectedColor={selectedColor} />
       </aside>
 
       <section className="canvas-panel panel">
