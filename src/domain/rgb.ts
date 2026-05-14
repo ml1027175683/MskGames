@@ -98,7 +98,7 @@ export function getColorRarityScore(color: RgbColor): number {
   return Math.round((extremeScore * 0.6 + saturationScore * 0.4) * 100);
 }
 
-function colorKey(color: RgbColor): string {
+export function colorKey(color: RgbColor): string {
   return `${color.r},${color.g},${color.b}`;
 }
 

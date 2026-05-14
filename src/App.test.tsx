@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import App, { createPatternPixels } from './App';
+import App from './App';
+import { createPatternPixels } from './domain/artwork';
 
 describe('RGB 马赛克游戏原型', () => {
   beforeEach(() => {

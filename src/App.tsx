@@ -1,128 +1,24 @@
 import './styles.css';
 import { useEffect, useRef, useState } from 'react';
-import type { CSSProperties, ChangeEvent, FormEvent, KeyboardEvent } from 'react';
-import { REPRESENTATIVE_COLORS, createPixelHash, mineColor } from './domain/rgb';
+import type { ChangeEvent, FormEvent, KeyboardEvent } from 'react';
+import { REPRESENTATIVE_COLORS, colorKey, createPixelHash, mineColor } from './domain/rgb';
+import { createBlankDraft, formatAssetDisplayId, pixelCount } from './domain/artwork';
+import { isSavedGame, loadSavedGame, normalizeSavedGame, saveGame } from './storage/localGameStorage';
+import { MosaicPreview, formatRgb } from './components/common/MosaicPreview';
+import { CertificationScanModal } from './components/certification/CertificationScanModal';
+import { CanvasPage } from './components/canvas/CanvasPage';
 import type { ColorRarity, ColorStack, RepresentativeColor, RgbColor } from './domain/rgb';
+import type { AssetSortOrder, CertificationScan, InventoryTab, MiningRecord, MosaicAsset, MosaicWork, Page, SavedGame } from './types/game';
 
-const canvasSize = 16;
-const pixelCount = canvasSize * canvasSize;
 const miningIntervalMs = 1500;
 const maxDraftWorks = 5;
-const saveKey = 'rgb-mosaic-save-v1';
 const builtInWorkIds = new Set(['current-draft', 'pikachu-icon']);
-let blankDraftSequence = 0;
-
-type Page = 'mining' | 'inventory' | 'canvas';
-type InventoryTab = 'colors' | 'artworks' | 'assets';
-type AssetSortOrder = 'newest' | 'oldest';
-type CanvasZoom = 50 | 100 | 200 | 400 | 800 | 1600 | 3200;
-
-type MiningRecord = {
-  id: string;
-  color: RgbColor;
-  rarity: ColorRarity;
-  createdAt: number;
-};
-
-type MosaicWork = {
-  id: string;
-  title: string;
-  status: 'draft' | 'certified' | 'archived';
-  width: number;
-  height: number;
-  pixels: Array<RgbColor | null>;
-  updatedAt: number;
-  archivedKey?: string;
-};
-
-type MosaicAsset = {
-  id: string;
-  workId: string;
-  title: string;
-  pixelHash: string;
-  creatorId: string;
-  ownerId: string;
-  certifiedAt: number;
-};
-
-type CertificationScan = {
-  asset?: MosaicAsset;
-  phase: 'scanning' | 'complete';
-  work: MosaicWork;
-};
-
-type SavedGame = {
-  activeWorkId: string | null;
-  artworks: MosaicWork[];
-  assets: MosaicAsset[];
-  inventory: ColorStack[];
-  minedCount: number;
-  selectedArtworkId: string;
-};
 
 const pageLabels: Record<Page, string> = {
   mining: '挖矿',
   inventory: '库存',
   canvas: '画布'
 };
-
-const canvasZoomLevels: CanvasZoom[] = [50, 100, 200, 400, 800, 1600, 3200];
-
-const goblinPalette: Record<string, RgbColor | null> = {
-  '.': null,
-  B: { r: 1, g: 1, b: 2 },
-  K: { r: 0, g: 0, b: 0 },
-  G: { r: 72, g: 152, b: 96 },
-  L: { r: 34, g: 204, b: 112 },
-  R: { r: 255, g: 16, b: 16 },
-  Y: { r: 246, g: 226, b: 18 },
-  P: { r: 126, g: 88, b: 176 }
-};
-
-const goblinAvatarPattern = [
-  '................',
-  '......KKKK......',
-  '....KKGGGGKK....',
-  '...KGGLGGLGGK...',
-  '..KGGGLLLLGGGK..',
-  '.KGGKRRKKRRKGGK.',
-  'KGGGKRRKKRRKGGGK',
-  'KGGGGGKKKKGGGGGK',
-  'KGGGGGYYYYGGGGGK',
-  '.KGGGGGKKGGGGGK.',
-  '..KGGGPPPPGGGK..',
-  '...KKGPPPPGKK...',
-  '....KGGGGGGK....',
-  '.....KGGGGK.....',
-  '......KKKK......',
-  '................'
-];
-
-const pikachuPalette: Record<string, RgbColor | null> = {
-  W: { r: 255, g: 255, b: 255 },
-  K: { r: 0, g: 0, b: 0 },
-  Y: { r: 255, g: 255, b: 16 },
-  R: { r: 255, g: 16, b: 16 }
-};
-
-const pikachuPattern = [
-  'WWWWWWWWWWWWWWWW',
-  'WWWWKWWWWWWKWWWW',
-  'WWWKKWWWWWWKKWWW',
-  'WWWKYYWWWWYYKWWW',
-  'WWWKYYYYYYYYKWWW',
-  'WWWYYYYYYYYYYWWW',
-  'WWYYYYYYYYYYYYWW',
-  'WWYYKKYYYYKKYYWW',
-  'WWYYKKYYYYKKYYWW',
-  'WWYYYRRYYRRYYYWW',
-  'WWWYYYYKKYYYYWWW',
-  'WWWYYYYYYYYYYWWW',
-  'WWWWYYYYYYYYWWWW',
-  'WWWWKYYYYYYKWWWW',
-  'WWWWKKWWWWKKWWWW',
-  'WWWWWWWWWWWWWWWW'
-];
 
 function App() {
   const initialGame = loadSavedGame();
@@ -776,200 +672,6 @@ function InventoryPage({
   );
 }
 
-function CanvasPage({
-  currentDraft,
-  draftWorkCount,
-  draftWorks,
-  inventory,
-  maxDraftWorks,
-  message,
-  onCreateWork,
-  onFillPixel,
-  onSelectCanvasDraft,
-  onSelectColor,
-  selectedColor
-}: {
-  currentDraft: MosaicWork | null;
-  draftWorkCount: number;
-  draftWorks: MosaicWork[];
-  inventory: ColorStack[];
-  maxDraftWorks: number;
-  message: string;
-  onCreateWork: (title: string) => void;
-  onFillPixel: (index: number) => void;
-  onSelectCanvasDraft: (workId: string) => void;
-  onSelectColor: (color: RgbColor) => void;
-  selectedColor: RgbColor | null;
-}) {
-  const [canvasZoom, setCanvasZoom] = useState<CanvasZoom>(100);
-  const [isNewWorkModalOpen, setIsNewWorkModalOpen] = useState(false);
-  const [showAllCanvasColors, setShowAllCanvasColors] = useState(false);
-  const [newWorkTitle, setNewWorkTitle] = useState('');
-  const hasReachedDraftLimit = draftWorkCount >= maxDraftWorks;
-  const canvasColorCatalog = REPRESENTATIVE_COLORS.map((item) => {
-    const owned = inventory.find((stack) => colorKey(stack.color) === colorKey(item.color));
-
-    return {
-      ...item,
-      quantity: owned?.quantity ?? 0
-    };
-  });
-  const canvasColors = showAllCanvasColors ? canvasColorCatalog : canvasColorCatalog.filter((item) => item.quantity > 0);
-
-  function changeCanvasZoom(direction: -1 | 1) {
-    setCanvasZoom((current) => {
-      const currentIndex = canvasZoomLevels.indexOf(current);
-      const nextIndex = Math.max(0, Math.min(canvasZoomLevels.length - 1, currentIndex + direction));
-
-      return canvasZoomLevels[nextIndex];
-    });
-  }
-
-  function submitNewWork(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    onCreateWork(newWorkTitle);
-    setNewWorkTitle('');
-    setIsNewWorkModalOpen(false);
-  }
-
-  return (
-    <section className="canvas-layout">
-      <aside className="panel">
-        <div className="section-heading-row">
-          <h2>可用色块</h2>
-          <button className="filter-toggle" onClick={() => setShowAllCanvasColors((current) => !current)} type="button">
-            {showAllCanvasColors ? '仅显示可用颜色' : '显示全部颜色'}
-          </button>
-        </div>
-        <p className="panel-copy">选择颜色后点击画布。每次填色都会自动保存为待鉴定作品。</p>
-        <ColorInventory inventory={canvasColors} onSelectColor={onSelectColor} selectedColor={selectedColor} />
-      </aside>
-
-      <section className="canvas-panel panel">
-        <div className="panel-heading split-heading">
-          <h2>16x16 像素画布</h2>
-          <span>{selectedColor ? `当前画笔 ${formatRgb(selectedColor)}` : '未选择颜色'}</span>
-        </div>
-
-        <div className="canvas-work-actions">
-          <button disabled={hasReachedDraftLimit} onClick={() => setIsNewWorkModalOpen(true)} type="button">新建画作</button>
-          <label>
-            <span>选择未鉴定画作</span>
-            <select
-              aria-label="选择未鉴定画作"
-              onChange={(event) => onSelectCanvasDraft(event.target.value)}
-              value={currentDraft?.id ?? ''}
-            >
-              <option value="">从未鉴定作品中选择</option>
-              {draftWorks.map((work) => (
-                <option key={work.id} value={work.id}>{work.title}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        {hasReachedDraftLimit ? <p className="limit-message">未鉴定作品已达 5 个，请先鉴定或删除草稿。</p> : null}
-
-        {!currentDraft ? (
-          <div className="canvas-empty-state">
-            <h3>还没有选择画作</h3>
-            <p>点击新建画作，或从上方未鉴定画作列表直接进入创作。</p>
-          </div>
-        ) : (
-          <>
-
-        <div className="canvas-tools" aria-label="画布缩放控制">
-          <button aria-label="缩小画布" disabled={canvasZoom === 50} onClick={() => changeCanvasZoom(-1)} type="button">
-            <span className="magnifier-icon zoom-out" aria-hidden="true" />
-          </button>
-          <span className="zoom-percent">{canvasZoom}%</span>
-          <button aria-label="放大画布" disabled={canvasZoom === 3200} onClick={() => changeCanvasZoom(1)} type="button">
-            <span className="magnifier-icon zoom-in" aria-hidden="true" />
-          </button>
-        </div>
-
-        <div className="canvas-stage" aria-label="画布显示区域" data-zoom={canvasZoom}>
-          <div className="pixel-canvas" aria-label="16x16 像素画布" data-zoom={canvasZoom}>
-            {currentDraft.pixels.map((pixel, index) => (
-              <button
-                aria-label={pixel ? `已填充 ${formatRgb(pixel)}` : `空像素 ${index + 1}`}
-                className="pixel"
-                key={index}
-                onClick={() => onFillPixel(index)}
-                style={{ background: pixel ? formatRgb(pixel) : undefined }}
-                type="button"
-              />
-            ))}
-          </div>
-        </div>
-          </>
-        )}
-
-        <p className="autosave-message">{message}</p>
-      </section>
-      {isNewWorkModalOpen ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="新建画作">
-          <form className="new-work-modal" onSubmit={submitNewWork}>
-            <h2>新建画作</h2>
-            <label htmlFor="new-work-title">新作品名称</label>
-            <input
-              autoFocus
-              id="new-work-title"
-              onChange={(event) => setNewWorkTitle(event.target.value)}
-              placeholder="输入作品名称"
-              value={newWorkTitle}
-            />
-            <div className="modal-actions">
-              <button onClick={() => setIsNewWorkModalOpen(false)} type="button">取消</button>
-              <button disabled={newWorkTitle.trim().length === 0} type="submit">确认新建</button>
-            </div>
-          </form>
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function ColorInventory({
-  inventory,
-  onSelectColor,
-  selectedColor
-}: {
-  inventory: ColorStack[];
-  onSelectColor: (color: RgbColor) => void;
-  selectedColor: RgbColor | null;
-}) {
-  return (
-    <div className="inventory" aria-label="颜色库存">
-      {inventory.length === 0 ? (
-        <p className="empty-state">正在等待第一块颜色矿石...</p>
-      ) : (
-        inventory.map((item) => {
-          const rgb = formatRgb(item.color);
-          const isSelected = selectedColor ? colorKey(selectedColor) === colorKey(item.color) : false;
-
-          return (
-            <button
-              className={`inventory-item${isSelected ? ' selected' : ''}`}
-              disabled={item.quantity <= 0}
-              key={colorKey(item.color)}
-              onClick={() => onSelectColor(item.color)}
-              type="button"
-            >
-              <span className="swatch" style={{ background: rgb }} />
-              <span>
-                选择 RGB({item.color.r}, {item.color.g}, {item.color.b})
-                {item.rarity ? <small>等级：{item.rarity.label}</small> : null}
-              </span>
-              <strong>x{item.quantity}</strong>
-            </button>
-          );
-        })
-      )}
-    </div>
-  );
-}
-
 function ColorCatalogItem({
   isSelected,
   item,
@@ -1189,54 +891,6 @@ function ArtworkDetail({
   );
 }
 
-function CertificationScanModal({
-  onClose,
-  onViewAsset,
-  scan
-}: {
-  onClose: () => void;
-  onViewAsset: () => void;
-  scan: CertificationScan;
-}) {
-  const assetDisplayId = scan.asset ? `asset-${scan.work.id}` : null;
-
-  return (
-    <div className="scan-overlay" role="dialog" aria-modal="true" aria-label="像素扫描鉴定">
-      <section className="scan-modal">
-        <div className="scan-copy">
-          <p className="eyebrow">Certification Scanner</p>
-          <h2>{scan.phase === 'complete' ? '鉴定成功' : '像素扫描鉴定中'}</h2>
-          <p>{scan.phase === 'complete' ? '像素矩阵已生成唯一资产指纹' : `正在扫描 ${scan.work.width}x${scan.work.height} 像素矩阵`}</p>
-        </div>
-
-        <div className={`scan-preview ${scan.phase}`}>
-          <MosaicPreview className="scan-artwork" currentDraft={scan.work} label={`${scan.work.title}扫描预览`} style={{ boxSizing: 'border-box' }} />
-          <span className="scan-line" aria-hidden="true" />
-        </div>
-
-        {scan.asset ? (
-          <div className="scan-result">
-            <h3>资产卡</h3>
-            <p><span>作品名称：</span><strong>{scan.asset.title}</strong></p>
-            <p><span>资产编号：</span><strong>{assetDisplayId}</strong></p>
-            <p><span>资产指纹：</span><code>{scan.asset.pixelHash.slice(0, 12)}...</code></p>
-            <p><span>鉴定时间：</span><strong>{new Date(scan.asset.certifiedAt).toLocaleString()}</strong></p>
-            <p><span>创建者：</span><strong>{scan.asset.creatorId}</strong></p>
-            <p><span>拥有者：</span><strong>{scan.asset.ownerId}</strong></p>
-          </div>
-        ) : null}
-
-        {scan.phase === 'complete' ? (
-          <div className="scan-actions">
-            <button onClick={onViewAsset} type="button">查看资产详情</button>
-            <button onClick={onClose} type="button">关闭鉴定结果</button>
-          </div>
-        ) : null}
-      </section>
-    </div>
-  );
-}
-
 function ArtworkCard({
   isSelected,
   onSelectArtwork,
@@ -1267,26 +921,6 @@ function ArtworkCard({
   );
 }
 
-function MosaicPreview({
-  className = '',
-  currentDraft,
-  label,
-  style
-}: {
-  className?: string;
-  currentDraft: MosaicWork;
-  label: string;
-  style?: CSSProperties;
-}) {
-  return (
-    <div className={`mosaic-preview ${className}`.trim()} aria-label={label} style={style}>
-      {currentDraft.pixels.map((pixel, index) => (
-        <span key={index} style={{ background: pixel ? formatRgb(pixel) : undefined }} />
-      ))}
-    </div>
-  );
-}
-
 function StatusItem({ label, value }: { label: string; value: string }) {
   return (
     <article className="status-item">
@@ -1294,139 +928,6 @@ function StatusItem({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </article>
   );
-}
-
-function createEmptyDraft(): MosaicWork {
-  return {
-    id: 'current-draft',
-    title: '当前待鉴定作品',
-    status: 'draft',
-    width: canvasSize,
-    height: canvasSize,
-    pixels: createGoblinAvatarPixels(),
-    updatedAt: Date.now()
-  };
-}
-
-function createBlankDraft(title: string): MosaicWork {
-  const createdAt = Date.now();
-  blankDraftSequence += 1;
-
-  return {
-    id: `blank-draft-${createdAt}-${blankDraftSequence}`,
-    title,
-    status: 'draft',
-    width: canvasSize,
-    height: canvasSize,
-    pixels: Array.from({ length: pixelCount }, () => null),
-    updatedAt: createdAt
-  };
-}
-
-function createGoblinAvatarPixels(): Array<RgbColor | null> {
-  return createPatternPixels(goblinAvatarPattern, goblinPalette);
-}
-
-function createPikachuWork(): MosaicWork {
-  return {
-    id: 'pikachu-icon',
-    title: '皮卡丘像素图标',
-    status: 'draft',
-    width: canvasSize,
-    height: canvasSize,
-    pixels: createPatternPixels(pikachuPattern, pikachuPalette),
-    updatedAt: Date.now()
-  };
-}
-
-function createInitialGame(): SavedGame {
-  const artworks = [createEmptyDraft(), createPikachuWork()];
-
-  return {
-    activeWorkId: 'current-draft',
-    artworks,
-    assets: [],
-    inventory: [],
-    minedCount: 0,
-    selectedArtworkId: 'current-draft'
-  };
-}
-
-function loadSavedGame(): SavedGame {
-  try {
-    const rawSave = window.localStorage.getItem(saveKey);
-
-    if (!rawSave) {
-      return createInitialGame();
-    }
-
-    const parsed = JSON.parse(rawSave) as Partial<SavedGame>;
-
-    if (!isSavedGame(parsed)) {
-      return createInitialGame();
-    }
-
-    return normalizeSavedGame(parsed);
-  } catch {
-    return createInitialGame();
-  }
-}
-
-function normalizeSavedGame(game: SavedGame): SavedGame {
-  const artworks = [...game.artworks];
-
-  if (!artworks.some((work) => work.id === 'current-draft')) {
-    artworks.push(createEmptyDraft());
-  }
-
-  if (!artworks.some((work) => work.id === 'pikachu-icon')) {
-    artworks.push(createPikachuWork());
-  }
-
-  const activeWorkId = game.activeWorkId && artworks.some((work) => work.id === game.activeWorkId) ? game.activeWorkId : null;
-  const selectedArtworkId = artworks.some((work) => work.id === game.selectedArtworkId) ? game.selectedArtworkId : artworks[0]?.id ?? '';
-
-  return {
-    ...game,
-    activeWorkId,
-    artworks,
-    selectedArtworkId
-  };
-}
-
-function saveGame(game: SavedGame) {
-  window.localStorage.setItem(saveKey, JSON.stringify(game));
-}
-
-function isSavedGame(value: Partial<SavedGame>): value is SavedGame {
-  return (
-    Array.isArray(value.artworks) &&
-    Array.isArray(value.assets) &&
-    Array.isArray(value.inventory) &&
-    typeof value.minedCount === 'number' &&
-    typeof value.selectedArtworkId === 'string' &&
-    (typeof value.activeWorkId === 'string' || value.activeWorkId === null)
-  );
-}
-
-export function createPatternPixels(pattern: string[], palette: Record<string, RgbColor | null>): Array<RgbColor | null> {
-  if (pattern.length !== canvasSize) {
-    throw new Error(`像素图案必须包含 ${canvasSize} 行`);
-  }
-
-  return pattern.flatMap((row, rowIndex) => {
-    if (row.length !== canvasSize) {
-      throw new Error(`像素图案第 ${rowIndex + 1} 行必须包含 ${canvasSize} 个标记`);
-    }
-
-    return row.split('').map((token) => {
-      if (!(token in palette)) {
-        throw new Error(`像素图案包含未知标记 ${token}`);
-      }
-
-      return palette[token];
-    });
-  });
 }
 
 function addColorToInventory(inventory: ColorStack[], mined: { color: RgbColor; rarity: ColorRarity }): ColorStack[] {
@@ -1473,18 +974,6 @@ function updateInventoryForPixelFill(
 
 function findColorRarity(color: RgbColor): ColorRarity {
   return REPRESENTATIVE_COLORS.find((item) => colorKey(item.color) === colorKey(color))?.rarity ?? REPRESENTATIVE_COLORS[0].rarity;
-}
-
-function colorKey(color: RgbColor): string {
-  return `${color.r},${color.g},${color.b}`;
-}
-
-function formatRgb(color: RgbColor): string {
-  return `rgb(${color.r}, ${color.g}, ${color.b})`;
-}
-
-function formatAssetDisplayId(asset: MosaicAsset): string {
-  return `asset-${asset.workId}`;
 }
 
 function formatTime(timestamp: number): string {
