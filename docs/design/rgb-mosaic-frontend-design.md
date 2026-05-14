@@ -32,7 +32,7 @@
 
 前端工作目录：`client/`。
 
-当前代码仍位于仓库根目录下的 `src/`，后续迁移到 `client/src/`。
+当前前端代码已迁移到 `client/src/`。
 
 当前职责：
 
@@ -55,6 +55,7 @@ client/
     types/
     styles.css
   package.json
+  package-lock.json
   vite.config.ts
 ```
 
@@ -352,7 +353,7 @@ MYSQL_DATABASE=rgb_mosaic
 
 ### 9.1 领域测试
 
-文件：`src/domain/rgb.test.ts`
+文件：`client/src/domain/rgb.test.ts`
 
 覆盖内容：
 
@@ -364,7 +365,7 @@ MYSQL_DATABASE=rgb_mosaic
 
 ### 9.2 页面行为测试
 
-文件：`src/App.test.tsx`
+文件：`client/src/App.test.tsx`
 
 覆盖内容：
 
