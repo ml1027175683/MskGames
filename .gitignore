@@ -8,3 +8,8 @@ dist/
 Thumbs.db
 *.log
 .superpowers/
+server/config/app.local.yaml
+server/.env
+server/bin/
+server/tmp/
+*.exe

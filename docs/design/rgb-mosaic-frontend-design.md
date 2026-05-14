@@ -63,7 +63,15 @@ client/
 
 后端工作目录：`server/`。
 
-当前状态：尚未实现，作为下一阶段服务端 MVP 目录。
+当前状态：已建立 Go 后端骨架，采用接近 Java MVC 的分层结构。
+
+当前已实现：
+
+1. 配置加载。
+2. 环境变量覆盖 MySQL 敏感配置。
+3. MySQL 连接池初始化。
+4. 服务健康检查接口。
+5. 数据库健康检查接口。
 
 规划职责：
 
@@ -81,14 +89,32 @@ client/
 ```text
 server/
   cmd/
-  internal/
     api/
-    config/
-    domain/
-    repository/
+  config/
+    app.yaml
+    app.example.yaml
+  internal/
+    controller/
     service/
+    repository/
+    model/
+    router/
+    middleware/
+    db/
+    config/
   migrations/
 ```
+
+分层职责：
+
+1. `controller/` 处理 HTTP 请求和响应。
+2. `service/` 处理业务逻辑。
+3. `repository/` 处理数据库访问。
+4. `model/` 放置数据模型。
+5. `router/` 注册 HTTP 路由。
+6. `middleware/` 放置 HTTP 中间件。
+7. `db/` 初始化 MySQL 连接池。
+8. `config/` 加载 YAML 配置和环境变量覆盖。
 
 ### 2.1.3 MySQL 配置
 

@@ -1,0 +1,11 @@
+server:
+  port: "8080"
+
+database:
+  host: "120.77.93.47"
+  port: "3306"
+  user: "root"
+  password: ""
+  databaseName: "rgb_mosaic"
+  maxOpenConnections: 10
+  maxIdleConnections: 5
