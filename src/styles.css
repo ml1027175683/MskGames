@@ -41,10 +41,39 @@ button {
 
 .status-bar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 2fr;
+  grid-template-columns: minmax(260px, 1fr) 2fr auto;
   gap: 24px;
   align-items: end;
   padding: 24px;
+}
+
+.save-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.save-actions button {
+  padding: 8px 12px;
+  border: 1px solid rgba(245, 241, 223, 0.16);
+  color: #f5f1df;
+  background: rgba(5, 5, 5, 0.45);
+  cursor: pointer;
+}
+
+.save-actions button:hover {
+  border-color: #00dcff;
+  background: rgba(0, 220, 255, 0.12);
+}
+
+.visually-hidden-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .eyebrow {

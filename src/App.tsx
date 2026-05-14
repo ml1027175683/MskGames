@@ -1,6 +1,6 @@
 import './styles.css';
-import { useEffect, useState } from 'react';
-import type { CSSProperties, FormEvent, KeyboardEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { CSSProperties, ChangeEvent, FormEvent, KeyboardEvent } from 'react';
 import { REPRESENTATIVE_COLORS, createPixelHash, mineColor } from './domain/rgb';
 import type { ColorRarity, ColorStack, RepresentativeColor, RgbColor } from './domain/rgb';
 
@@ -138,6 +138,7 @@ function App() {
   const [selectedAssetId, setSelectedAssetId] = useState(initialGame.assets[0]?.id ?? '');
   const [certificationScan, setCertificationScan] = useState<CertificationScan | null>(null);
   const [message, setMessage] = useState('矿机已启动，正在扫描 RGB 光谱。');
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -357,6 +358,70 @@ function App() {
     setMessage(`像素 #${index + 1} 已填充，已自动保存到「${activeWork.title}」。`);
   }
 
+  function createSaveSnapshot(): SavedGame {
+    return {
+      activeWorkId,
+      artworks,
+      assets,
+      inventory,
+      minedCount,
+      selectedArtworkId
+    };
+  }
+
+  function applySavedGame(game: SavedGame) {
+    const normalized = normalizeSavedGame(game);
+
+    setInventory(normalized.inventory);
+    setMinedCount(normalized.minedCount);
+    setArtworks(normalized.artworks);
+    setAssets(normalized.assets);
+    setActiveWorkId(normalized.activeWorkId);
+    setSelectedArtworkId(normalized.selectedArtworkId);
+    setSelectedAssetId(normalized.assets[0]?.id ?? '');
+  }
+
+  function exportSave() {
+    const payload = JSON.stringify(createSaveSnapshot(), null, 2);
+    const blob = new Blob([payload], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const date = new Date().toISOString().slice(0, 10);
+
+    link.href = url;
+    link.download = `rgb-mosaic-save-${date}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setMessage('存档已导出。');
+  }
+
+  async function importSave(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as Partial<SavedGame>;
+
+      if (!isSavedGame(parsed)) {
+        setMessage('存档文件无效，未导入。');
+        return;
+      }
+
+      applySavedGame(parsed);
+      setMessage('存档已导入。');
+    } catch {
+      setMessage('存档文件无效，未导入。');
+    } finally {
+      event.target.value = '';
+    }
+  }
+
   return (
     <main className="game-shell">
       <section className="status-bar" aria-label="游戏状态">
@@ -370,6 +435,18 @@ function App() {
           <StatusItem label="已挖颜色" value={String(minedCount)} />
           <StatusItem label="库存种类" value={String(colorKinds)} />
           <StatusItem label="已填像素" value={`${filledPixels}/${pixelCount}`} />
+        </div>
+        <div className="save-actions" aria-label="存档操作">
+          <button onClick={exportSave} type="button">导出存档</button>
+          <button onClick={() => importInputRef.current?.click()} type="button">导入存档</button>
+          <input
+            ref={importInputRef}
+            accept="application/json,.json"
+            aria-label="导入存档文件"
+            className="visually-hidden-file"
+            onChange={importSave}
+            type="file"
+          />
         </div>
       </section>
 

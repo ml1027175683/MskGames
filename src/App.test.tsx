@@ -680,6 +680,133 @@ describe('RGB 马赛克游戏原型', () => {
     expect(screen.getByRole('button', { name: '查看作品 持久化草稿' })).toBeInTheDocument();
   });
 
+  it('导出存档会下载当前游戏数据', () => {
+    const originalCreateElement = document.createElement.bind(document);
+    const createObjectUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:rgb-save');
+    const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const clickMock = vi.fn();
+    const appendChild = vi.spyOn(document.body, 'appendChild');
+    const removeChild = vi.spyOn(document.body, 'removeChild');
+
+    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      const element = originalCreateElement(tagName);
+
+      if (tagName === 'a') {
+        Object.defineProperty(element, 'click', { value: clickMock });
+      }
+
+      return element;
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '画布' }));
+    fireEvent.click(screen.getByRole('button', { name: '新建画作' }));
+    fireEvent.change(screen.getByLabelText('新作品名称'), { target: { value: '导出测试草稿' } });
+    fireEvent.click(screen.getByRole('button', { name: '确认新建' }));
+
+    fireEvent.click(screen.getByRole('button', { name: '导出存档' }));
+
+    expect(createObjectUrl).toHaveBeenCalledTimes(1);
+    expect(clickMock).toHaveBeenCalledTimes(1);
+    expect(appendChild).toHaveBeenCalled();
+    expect(removeChild).toHaveBeenCalled();
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:rgb-save');
+
+    const blob = createObjectUrl.mock.calls[0][0] as Blob;
+
+    expect(blob.type).toBe('application/json');
+  });
+
+  it('导入有效存档会恢复画作和资产库', async () => {
+    vi.useRealTimers();
+    const importedPixels = Array.from({ length: 256 }, () => ({ r: 42, g: 156, b: 236 }));
+    const importedSave = {
+      activeWorkId: null,
+      artworks: [
+        {
+          id: 'imported-draft',
+          title: '导入草稿',
+          status: 'draft',
+          width: 16,
+          height: 16,
+          pixels: Array.from({ length: 256 }, () => null),
+          updatedAt: 1
+        },
+        {
+          id: 'imported-certified',
+          title: '导入资产来源',
+          status: 'certified',
+          width: 16,
+          height: 16,
+          pixels: importedPixels,
+          updatedAt: 2,
+          archivedKey: '42,156,236|'.repeat(256)
+        }
+      ],
+      assets: [
+        {
+          id: 'asset-imported',
+          workId: 'imported-certified',
+          title: '导入资产来源',
+          pixelHash: '42,156,236|'.repeat(256),
+          creatorId: 'local-player',
+          ownerId: 'local-player',
+          certifiedAt: 2
+        }
+      ],
+      inventory: [
+        {
+          color: { r: 42, g: 156, b: 236 },
+          quantity: 3,
+          rarity: { level: 3, label: '稀有', dropRate: 0.12 }
+        }
+      ],
+      minedCount: 3,
+      selectedArtworkId: 'imported-draft'
+    };
+
+    render(<App />);
+
+    const file = new File([JSON.stringify(importedSave)], 'save.json', { type: 'application/json' });
+
+    fireEvent.change(screen.getByLabelText('导入存档文件'), { target: { files: [file] } });
+
+    expect(await screen.findByText('存档已导入。')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+    fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
+
+    expect(screen.getByRole('button', { name: '查看作品 导入草稿' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '查看作品 导入资产来源' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '资产库' }));
+
+    expect(screen.getByRole('button', { name: '查看资产 asset-imported-certified' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '资产详情：导入资产来源' })).toBeInTheDocument();
+  });
+
+  it('导入无效存档不会覆盖当前数据', async () => {
+    vi.useRealTimers();
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '画布' }));
+    fireEvent.click(screen.getByRole('button', { name: '新建画作' }));
+    fireEvent.change(screen.getByLabelText('新作品名称'), { target: { value: '保留草稿' } });
+    fireEvent.click(screen.getByRole('button', { name: '确认新建' }));
+
+    const file = new File([JSON.stringify({ bad: true })], 'bad-save.json', { type: 'application/json' });
+
+    fireEvent.change(screen.getByLabelText('导入存档文件'), { target: { files: [file] } });
+
+    expect(await screen.findByText('存档文件无效，未导入。')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+    fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
+
+    expect(screen.getByRole('button', { name: '查看作品 保留草稿' })).toBeInTheDocument();
+  });
+
   it('重新打开应用后会恢复已鉴定资产库', async () => {
     vi.useRealTimers();
     const firstRender = render(<App />);
