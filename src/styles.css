@@ -229,6 +229,37 @@ h2 {
   background: rgba(0, 220, 255, 0.12);
 }
 
+.inventory-section-tools {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 10px;
+  width: min(100%, 420px);
+}
+
+.inventory-section-tools.single-tool {
+  grid-template-columns: minmax(180px, 1fr);
+  width: min(100%, 300px);
+}
+
+.inventory-section-tools input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(245, 241, 223, 0.16);
+  color: #f5f1df;
+  background: rgba(5, 5, 5, 0.55);
+}
+
+.inventory-section-tools input::placeholder {
+  color: rgba(184, 175, 155, 0.78);
+}
+
+.inventory-section-tools input:focus,
+.inventory-section-tools input:hover {
+  border-color: #00dcff;
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(0, 220, 255, 0.18), 0 0 22px rgba(0, 220, 255, 0.08);
+}
+
 .split-heading {
   justify-content: space-between;
 }
@@ -373,8 +404,7 @@ h2 {
 }
 
 .inventory-toolbar {
-  display: grid;
-  grid-template-columns: auto minmax(240px, 1fr) auto;
+  display: flex;
   gap: 14px;
   align-items: center;
   margin-bottom: 20px;
@@ -385,16 +415,13 @@ h2 {
   gap: 8px;
 }
 
-.inventory-tabs button,
-.filter-button,
-.inventory-toolbar input {
+.inventory-tabs button {
   border: 1px solid rgba(245, 241, 223, 0.16);
   color: #f5f1df;
   background: rgba(5, 5, 5, 0.55);
 }
 
-.inventory-tabs button,
-.filter-button {
+.inventory-tabs button {
   padding: 10px 14px;
   cursor: pointer;
 }
@@ -404,9 +431,57 @@ h2 {
   background: rgba(0, 220, 255, 0.13);
 }
 
-.inventory-toolbar input {
+.asset-library-heading {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.asset-library-tools {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 150px;
+  gap: 10px;
+  width: min(100%, 430px);
+}
+
+.asset-library-tools input,
+.asset-library-tools select {
   width: 100%;
+  border: 1px solid rgba(245, 241, 223, 0.16);
+  color: #f5f1df;
+  background: rgba(5, 5, 5, 0.55);
+}
+
+.asset-library-tools input {
   padding: 10px 12px;
+}
+
+.asset-library-tools select {
+  padding: 10px 34px 10px 12px;
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #ffcc4d 50%),
+    linear-gradient(135deg, #ffcc4d 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 12px) 50%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+.asset-library-tools input::placeholder {
+  color: rgba(184, 175, 155, 0.78);
+}
+
+.asset-library-tools input:focus,
+.asset-library-tools select:focus,
+.asset-library-tools input:hover,
+.asset-library-tools select:hover {
+  border-color: #00dcff;
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(0, 220, 255, 0.18), 0 0 22px rgba(0, 220, 255, 0.08);
 }
 
 .inventory-browser {
@@ -1226,7 +1301,6 @@ h2 {
   .status-bar,
   .page-grid,
   .inventory-browser,
-  .inventory-toolbar,
   .canvas-layout,
   .mosaic-columns {
     grid-template-columns: 1fr;

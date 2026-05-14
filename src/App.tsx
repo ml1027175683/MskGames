@@ -14,6 +14,7 @@ let blankDraftSequence = 0;
 
 type Page = 'mining' | 'inventory' | 'canvas';
 type InventoryTab = 'colors' | 'artworks' | 'assets';
+type AssetSortOrder = 'newest' | 'oldest';
 type CanvasZoom = 50 | 100 | 200 | 400 | 800 | 1600 | 3200;
 
 type MiningRecord = {
@@ -589,6 +590,10 @@ function InventoryPage({
   selectedColor: RgbColor | null;
 }) {
   const [showOnlyOwnedColors, setShowOnlyOwnedColors] = useState(false);
+  const [colorSearchQuery, setColorSearchQuery] = useState('');
+  const [artworkSearchQuery, setArtworkSearchQuery] = useState('');
+  const [assetSearchQuery, setAssetSearchQuery] = useState('');
+  const [assetSortOrder, setAssetSortOrder] = useState<AssetSortOrder>('newest');
   const colorCatalog = REPRESENTATIVE_COLORS.map((item) => {
     const owned = inventory.find((stack) => colorKey(stack.color) === colorKey(item.color));
 
@@ -597,12 +602,44 @@ function InventoryPage({
       quantity: owned?.quantity ?? 0
     };
   });
+  const normalizedColorSearch = colorSearchQuery.trim().toLowerCase().replaceAll(' ', '');
+  const visibleColorCatalog = colorCatalog.filter((item) => {
+    const matchesAvailability = !showOnlyOwnedColors || item.quantity > 0;
+
+    if (!matchesAvailability) {
+      return false;
+    }
+
+    if (!normalizedColorSearch) {
+      return true;
+    }
+
+    return [colorKey(item.color), item.rarity.label.toLowerCase()].some((value) => value.includes(normalizedColorSearch));
+  });
   const selectedCatalogColor = selectedColor
-    ? colorCatalog.find((item) => colorKey(item.color) === colorKey(selectedColor)) ?? colorCatalog[0]
-    : colorCatalog[0];
-  const visibleColorCatalog = showOnlyOwnedColors ? colorCatalog.filter((item) => item.quantity > 0) : colorCatalog;
+    ? visibleColorCatalog.find((item) => colorKey(item.color) === colorKey(selectedColor)) ?? visibleColorCatalog[0] ?? colorCatalog[0]
+    : visibleColorCatalog[0] ?? colorCatalog[0];
   const artworkInventory = artworks.filter((work) => work.status === 'draft');
-  const visibleSelectedArtwork = artworkInventory.find((work) => work.id === selectedArtwork.id) ?? artworkInventory[0] ?? null;
+  const normalizedArtworkSearch = artworkSearchQuery.trim().toLowerCase();
+  const visibleArtworkInventory = artworkInventory.filter((work) => {
+    if (!normalizedArtworkSearch) {
+      return true;
+    }
+
+    return [work.title, work.id].some((value) => value.toLowerCase().includes(normalizedArtworkSearch));
+  });
+  const visibleSelectedArtwork = visibleArtworkInventory.find((work) => work.id === selectedArtwork.id) ?? visibleArtworkInventory[0] ?? null;
+  const normalizedAssetSearch = assetSearchQuery.trim().toLowerCase();
+  const visibleAssets = assets
+    .filter((asset) => {
+      if (!normalizedAssetSearch) {
+        return true;
+      }
+
+      return [asset.title, formatAssetDisplayId(asset), asset.pixelHash].some((value) => value.toLowerCase().includes(normalizedAssetSearch));
+    })
+    .sort((left, right) => (assetSortOrder === 'newest' ? right.certifiedAt - left.certifiedAt : left.certifiedAt - right.certifiedAt));
+  const visibleSelectedAsset = visibleAssets.find((asset) => asset.id === selectedAsset?.id) ?? visibleAssets[0] ?? null;
 
   return (
     <section className="steam-inventory panel">
@@ -618,8 +655,6 @@ function InventoryPage({
             资产库
           </button>
         </div>
-        <input aria-label="库存搜索" placeholder="在库存中搜索 RGB 或作品" />
-        <button className="filter-button" type="button">显示高级筛选条件...</button>
       </div>
 
       {inventoryTab === 'colors' ? (
@@ -627,12 +662,20 @@ function InventoryPage({
           <article>
             <div className="section-heading-row">
               <h2>色块库存</h2>
-              <button className="filter-toggle" onClick={() => setShowOnlyOwnedColors((current) => !current)} type="button">
-                {showOnlyOwnedColors ? '显示全部颜色' : '仅显示可用颜色'}
-              </button>
+              <div className="inventory-section-tools">
+                <input
+                  aria-label="搜索色块"
+                  onChange={(event) => setColorSearchQuery(event.target.value)}
+                  placeholder="搜索 RGB / 稀有度"
+                  value={colorSearchQuery}
+                />
+                <button className="filter-toggle" onClick={() => setShowOnlyOwnedColors((current) => !current)} type="button">
+                  {showOnlyOwnedColors ? '显示全部颜色' : '仅显示可用颜色'}
+                </button>
+              </div>
             </div>
             {visibleColorCatalog.length === 0 ? (
-              <p className="empty-state">暂无可用颜色</p>
+              <p className="empty-state">{colorSearchQuery.trim() ? '没有匹配的色块' : '暂无可用颜色'}</p>
             ) : (
               <div className="item-grid" aria-label="色块库存网格">
                 {visibleColorCatalog.map((item) => (
@@ -651,12 +694,24 @@ function InventoryPage({
       ) : inventoryTab === 'artworks' ? (
         <section className="inventory-browser">
           <article>
-            <h2>画作库存</h2>
+            <div className="section-heading-row">
+              <h2>画作库存</h2>
+              <div className="inventory-section-tools single-tool">
+                <input
+                  aria-label="搜索画作"
+                  onChange={(event) => setArtworkSearchQuery(event.target.value)}
+                  placeholder="搜索作品名 / ID"
+                  value={artworkSearchQuery}
+                />
+              </div>
+            </div>
             {artworkInventory.length === 0 ? (
               <p className="empty-state">暂无未鉴定草稿</p>
+            ) : visibleArtworkInventory.length === 0 ? (
+              <p className="empty-state">没有匹配的画作</p>
             ) : (
               <div className="item-grid artwork-grid" aria-label="画作库存网格">
-                {artworkInventory.map((work) => (
+                {visibleArtworkInventory.map((work) => (
                   <ArtworkCard isSelected={work.id === visibleSelectedArtwork?.id} key={work.id} onSelectArtwork={onSelectArtwork} work={work} />
                 ))}
               </div>
@@ -685,20 +740,36 @@ function InventoryPage({
       ) : (
         <section className="inventory-browser">
           <article>
-            <h2>资产库</h2>
+            <div className="asset-library-heading">
+              <h2>资产库</h2>
+              <div className="asset-library-tools">
+                <input
+                  aria-label="搜索资产"
+                  onChange={(event) => setAssetSearchQuery(event.target.value)}
+                  placeholder="搜索资产名 / 编号 / 指纹"
+                  value={assetSearchQuery}
+                />
+                <select aria-label="资产排序" onChange={(event) => setAssetSortOrder(event.target.value as AssetSortOrder)} value={assetSortOrder}>
+                  <option value="newest">最新鉴定优先</option>
+                  <option value="oldest">最早鉴定优先</option>
+                </select>
+              </div>
+            </div>
             {assets.length === 0 ? (
               <p className="empty-state">暂无已鉴定资产</p>
+            ) : visibleAssets.length === 0 ? (
+              <p className="empty-state">没有匹配的资产</p>
             ) : (
               <div className="item-grid artwork-grid" aria-label="资产库网格">
-                {assets.map((asset) => {
+                {visibleAssets.map((asset) => {
                   const work = artworks.find((item) => item.id === asset.workId);
 
-                  return <AssetCard asset={asset} isSelected={asset.id === selectedAsset?.id} key={asset.id} onSelectAsset={onSelectAsset} work={work} />;
+                  return <AssetCard asset={asset} isSelected={asset.id === visibleSelectedAsset?.id} key={asset.id} onSelectAsset={onSelectAsset} work={work} />;
                 })}
               </div>
             )}
           </article>
-          <AssetDetail asset={selectedAsset} work={selectedAsset ? artworks.find((item) => item.id === selectedAsset.workId) : undefined} />
+          <AssetDetail asset={visibleSelectedAsset} work={visibleSelectedAsset ? artworks.find((item) => item.id === visibleSelectedAsset.workId) : undefined} />
         </section>
       )}
     </section>
@@ -969,7 +1040,7 @@ function AssetDetail({ asset, work }: { asset: MosaicAsset | null; work?: Mosaic
     return (
       <aside className="detail-pane asset-detail-pane">
         <h2>资产详情</h2>
-        <p className="empty-state">请选择已鉴定资产</p>
+        <p className="empty-state">请选择资产</p>
       </aside>
     );
   }

@@ -77,6 +77,25 @@ describe('RGB 马赛克游戏原型', () => {
     expect(screen.getAllByRole('button', { name: /数量：0/ }).length).toBeGreaterThan(0);
   });
 
+  it('色块库存可以按 RGB 和稀有度内部搜索', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+    fireEvent.change(screen.getByLabelText('搜索色块'), { target: { value: '72,152,96' } });
+
+    expect(screen.getByRole('button', { name: /RGB\(72, 152, 96\)/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /RGB\(246, 226, 18\)/ })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('搜索色块'), { target: { value: '棱晶' } });
+
+    expect(screen.getAllByText('棱晶').length).toBeGreaterThan(0);
+    expect(screen.queryByText('普通')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('搜索色块'), { target: { value: '不存在的色块' } });
+
+    expect(screen.getByText('没有匹配的色块')).toBeInTheDocument();
+  });
+
   it('画布页可以切换显示全部库存颜色或仅显示可用颜色', () => {
     render(<App />);
 
@@ -99,6 +118,29 @@ describe('RGB 马赛克游戏原型', () => {
 
     expect(screen.getByRole('heading', { name: '16x16 像素画布' })).toBeInTheDocument();
     expect(screen.getByText('256/256')).toBeInTheDocument();
+  });
+
+  it('画作库存可以按作品名称和 ID 内部搜索', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+    fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
+    fireEvent.change(screen.getByLabelText('搜索画作'), { target: { value: '皮卡丘' } });
+
+    expect(screen.queryByRole('button', { name: '查看作品 当前待鉴定作品' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看作品 皮卡丘像素图标' })).toBeInTheDocument();
+    expect(screen.getByText('作品详情：皮卡丘像素图标')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('搜索画作'), { target: { value: 'current-draft' } });
+
+    expect(screen.getByRole('button', { name: '查看作品 当前待鉴定作品' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '查看作品 皮卡丘像素图标' })).not.toBeInTheDocument();
+    expect(screen.getByText('作品详情：当前待鉴定作品')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('搜索画作'), { target: { value: '不存在的画作' } });
+
+    expect(screen.getByText('没有匹配的画作')).toBeInTheDocument();
+    expect(screen.getByText('请选择未鉴定草稿')).toBeInTheDocument();
   });
 
   it('点击画作卡片只切换详情，详情按钮才进入画布', () => {
@@ -334,6 +376,165 @@ describe('RGB 马赛克游戏原型', () => {
     expect(screen.getByRole('button', { name: '查看资产 asset-pikachu-icon' })).toHaveClass('selected');
     expect(screen.getByRole('heading', { name: '资产详情：蓝色资产来源' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '资产详情：红色资产来源' })).not.toBeInTheDocument();
+  });
+
+  it('资产库可以按资产名称搜索并自动展示匹配资产详情', () => {
+    const redPixels = Array.from({ length: 256 }, () => ({ r: 255, g: 0, b: 0 }));
+    const bluePixels = Array.from({ length: 256 }, () => ({ r: 0, g: 0, b: 255 }));
+
+    window.localStorage.setItem(
+      'rgb-mosaic-save-v1',
+      JSON.stringify({
+        activeWorkId: null,
+        artworks: [
+          {
+            id: 'current-draft',
+            title: '红色资产来源',
+            status: 'certified',
+            width: 16,
+            height: 16,
+            pixels: redPixels,
+            updatedAt: 1,
+            archivedKey: '255,0,0|'.repeat(256)
+          },
+          {
+            id: 'pikachu-icon',
+            title: '蓝色资产来源',
+            status: 'certified',
+            width: 16,
+            height: 16,
+            pixels: bluePixels,
+            updatedAt: 2,
+            archivedKey: '0,0,255|'.repeat(256)
+          }
+        ],
+        assets: [
+          {
+            id: 'asset-red',
+            workId: 'current-draft',
+            title: '红色资产来源',
+            pixelHash: '255,0,0|'.repeat(256),
+            creatorId: 'local-player',
+            ownerId: 'local-player',
+            certifiedAt: 1
+          },
+          {
+            id: 'asset-blue',
+            workId: 'pikachu-icon',
+            title: '蓝色资产来源',
+            pixelHash: '0,0,255|'.repeat(256),
+            creatorId: 'local-player',
+            ownerId: 'local-player',
+            certifiedAt: 2
+          }
+        ],
+        inventory: [],
+        minedCount: 0,
+        selectedArtworkId: 'current-draft'
+      })
+    );
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+    fireEvent.click(screen.getByRole('button', { name: '资产库' }));
+    fireEvent.change(screen.getByLabelText('搜索资产'), { target: { value: '蓝色' } });
+
+    expect(screen.queryByRole('button', { name: '查看资产 asset-current-draft' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看资产 asset-pikachu-icon' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '资产详情：蓝色资产来源' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('搜索资产'), { target: { value: 'asset-current-draft' } });
+
+    expect(screen.getByRole('button', { name: '查看资产 asset-current-draft' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '查看资产 asset-pikachu-icon' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '资产详情：红色资产来源' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('搜索资产'), { target: { value: '0,0,255' } });
+
+    expect(screen.queryByRole('button', { name: '查看资产 asset-current-draft' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看资产 asset-pikachu-icon' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '资产详情：蓝色资产来源' })).toBeInTheDocument();
+  });
+
+  it('资产库支持按鉴定时间排序并在无匹配时展示空状态', () => {
+    const redPixels = Array.from({ length: 256 }, () => ({ r: 255, g: 0, b: 0 }));
+    const bluePixels = Array.from({ length: 256 }, () => ({ r: 0, g: 0, b: 255 }));
+
+    window.localStorage.setItem(
+      'rgb-mosaic-save-v1',
+      JSON.stringify({
+        activeWorkId: null,
+        artworks: [
+          {
+            id: 'current-draft',
+            title: '红色资产来源',
+            status: 'certified',
+            width: 16,
+            height: 16,
+            pixels: redPixels,
+            updatedAt: 1,
+            archivedKey: '255,0,0|'.repeat(256)
+          },
+          {
+            id: 'pikachu-icon',
+            title: '蓝色资产来源',
+            status: 'certified',
+            width: 16,
+            height: 16,
+            pixels: bluePixels,
+            updatedAt: 2,
+            archivedKey: '0,0,255|'.repeat(256)
+          }
+        ],
+        assets: [
+          {
+            id: 'asset-red',
+            workId: 'current-draft',
+            title: '红色资产来源',
+            pixelHash: '255,0,0|'.repeat(256),
+            creatorId: 'local-player',
+            ownerId: 'local-player',
+            certifiedAt: 1
+          },
+          {
+            id: 'asset-blue',
+            workId: 'pikachu-icon',
+            title: '蓝色资产来源',
+            pixelHash: '0,0,255|'.repeat(256),
+            creatorId: 'local-player',
+            ownerId: 'local-player',
+            certifiedAt: 2
+          }
+        ],
+        inventory: [],
+        minedCount: 0,
+        selectedArtworkId: 'current-draft'
+      })
+    );
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+    fireEvent.click(screen.getByRole('button', { name: '资产库' }));
+
+    expect(screen.getAllByRole('button', { name: /查看资产 asset-/ }).map((button) => button.getAttribute('aria-label'))).toEqual([
+      '查看资产 asset-pikachu-icon',
+      '查看资产 asset-current-draft'
+    ]);
+
+    fireEvent.change(screen.getByLabelText('资产排序'), { target: { value: 'oldest' } });
+
+    expect(screen.getAllByRole('button', { name: /查看资产 asset-/ }).map((button) => button.getAttribute('aria-label'))).toEqual([
+      '查看资产 asset-current-draft',
+      '查看资产 asset-pikachu-icon'
+    ]);
+
+    fireEvent.change(screen.getByLabelText('搜索资产'), { target: { value: '不存在的资产' } });
+
+    expect(screen.getByText('没有匹配的资产')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /查看资产 asset-/ })).not.toBeInTheDocument();
+    expect(screen.getByText('请选择资产')).toBeInTheDocument();
   });
 
   it('像素矩阵重复的作品不能重复鉴定为第二个资产', async () => {
