@@ -1,18 +1,23 @@
 import './styles.css';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent, KeyboardEvent } from 'react';
-import { REPRESENTATIVE_COLORS, colorKey, createPixelHash, mineColor } from './domain/rgb';
+import { COLOR_RARITIES, REPRESENTATIVE_COLORS, colorKey, createPixelHash } from './domain/rgb';
 import { createBlankDraft, formatAssetDisplayId, pixelCount } from './domain/artwork';
 import { isSavedGame, loadSavedGame, normalizeSavedGame, saveGame } from './storage/localGameStorage';
 import { MosaicPreview, formatRgb } from './components/common/MosaicPreview';
 import { CertificationScanModal } from './components/certification/CertificationScanModal';
 import { CanvasPage } from './components/canvas/CanvasPage';
+import { fetchBackendColorInventory, login, mineBackendColor, register } from './api/gameApi';
+import type { AuthUser } from './api/gameApi';
 import type { ColorRarity, ColorStack, RepresentativeColor, RgbColor } from './domain/rgb';
 import type { AssetSortOrder, CertificationScan, InventoryTab, MiningRecord, MosaicAsset, MosaicWork, Page, SavedGame } from './types/game';
 
-const miningIntervalMs = 1500;
+type ColorCatalogEntry = RepresentativeColor & { quantity: number };
+
 const maxDraftWorks = 5;
 const builtInWorkIds = new Set(['current-draft', 'pikachu-icon']);
+const authTokenKey = 'rgb-mosaic-auth-token';
+const authUserKey = 'rgb-mosaic-auth-user';
 
 const pageLabels: Record<Page, string> = {
   mining: '挖矿',
@@ -23,9 +28,9 @@ const pageLabels: Record<Page, string> = {
 function App() {
   const initialGame = loadSavedGame();
   const [activePage, setActivePage] = useState<Page>('mining');
-  const [inventory, setInventory] = useState<ColorStack[]>(initialGame.inventory);
+  const [inventory, setInventory] = useState<ColorStack[]>([]);
   const [selectedColor, setSelectedColor] = useState<RgbColor | null>(null);
-  const [minedCount, setMinedCount] = useState(initialGame.minedCount);
+  const [minedCount, setMinedCount] = useState(0);
   const [miningRecords, setMiningRecords] = useState<MiningRecord[]>([]);
   const [artworks, setArtworks] = useState<MosaicWork[]>(initialGame.artworks);
   const [assets, setAssets] = useState<MosaicAsset[]>(initialGame.assets);
@@ -34,28 +39,17 @@ function App() {
   const [selectedArtworkId, setSelectedArtworkId] = useState(initialGame.selectedArtworkId);
   const [selectedAssetId, setSelectedAssetId] = useState(initialGame.assets[0]?.id ?? '');
   const [certificationScan, setCertificationScan] = useState<CertificationScan | null>(null);
-  const [message, setMessage] = useState('矿机已启动，正在扫描 RGB 光谱。');
+  const [backendMiningStatus, setBackendMiningStatus] = useState('后端未连接');
+  const [isBackendMining, setIsBackendMining] = useState(false);
+  const [authToken, setAuthToken] = useState(() => window.localStorage.getItem(authTokenKey) ?? '');
+  const [authUser, setAuthUser] = useState<AuthUser | null>(() => loadAuthUser());
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authUsername, setAuthUsername] = useState('');
+  const [authDisplayName, setAuthDisplayName] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [message, setMessage] = useState('后端矿机已就绪，请登录用户库存后开始挖矿。');
   const importInputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      const mined = mineColor();
-      const record: MiningRecord = {
-        id: `${Date.now()}-${Math.random()}`,
-        color: mined.color,
-        rarity: mined.rarity,
-        createdAt: Date.now()
-      };
-
-      setInventory((current) => addColorToInventory(current, mined));
-      setSelectedColor((current) => current ?? mined.color);
-      setMinedCount((current) => current + 1);
-      setMiningRecords((current) => [record, ...current].slice(0, 10));
-      setMessage(`挖到 ${mined.rarity.label} RGB(${mined.color.r}, ${mined.color.g}, ${mined.color.b})`);
-    }, miningIntervalMs);
-
-    return () => window.clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     saveGame({ activeWorkId, artworks, assets, inventory, minedCount, selectedArtworkId });
@@ -78,6 +72,91 @@ function App() {
     }
 
     setActivePage(page);
+  }
+
+  async function mineOnceFromBackend() {
+    if (!authToken) {
+      setBackendMiningStatus('请先登录');
+      setMessage('请先登录或注册，再使用后端挖矿。');
+      return;
+    }
+
+    setIsBackendMining(true);
+    setBackendMiningStatus('正在请求后端挖矿...');
+
+    try {
+      const mined = await mineBackendColor(authToken);
+      const backendInventory = await fetchBackendColorInventory(authToken);
+      const record: MiningRecord = {
+        id: `backend-${Date.now()}`,
+        color: mined.color,
+        rarity: mined.rarity,
+        createdAt: Date.now()
+      };
+
+      setInventory(backendInventory);
+      setSelectedColor((current) => current ?? mined.color);
+      setMinedCount((current) => current + 1);
+      setMiningRecords((current) => [record, ...current].slice(0, 10));
+      setBackendMiningStatus('后端连接正常');
+      setMessage(`后端挖到 ${mined.rarity.label} RGB(${mined.color.r}, ${mined.color.g}, ${mined.color.b})`);
+    } catch {
+      setBackendMiningStatus('后端连接失败');
+      setMessage('后端挖矿失败，请确认 Go 服务已启动。');
+    } finally {
+      setIsBackendMining(false);
+    }
+  }
+
+  async function submitAuth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsAuthenticating(true);
+
+    try {
+      const result = authMode === 'login'
+        ? await login({ username: authUsername, password: authPassword })
+        : await register({ username: authUsername, displayName: authDisplayName, password: authPassword });
+
+      setAuthToken(result.token);
+      setAuthUser(result.user);
+      window.localStorage.setItem(authTokenKey, result.token);
+      window.localStorage.setItem(authUserKey, JSON.stringify(result.user));
+      setBackendMiningStatus('后端登录成功');
+      setMessage(`已登录为 ${result.user.displayName}。`);
+      setAuthPassword('');
+    } catch {
+      setMessage(authMode === 'login' ? '登录失败，请检查用户名和密码。' : '注册失败，请换一个用户名。');
+    } finally {
+      setIsAuthenticating(false);
+    }
+  }
+
+  function logout() {
+    setAuthToken('');
+    setAuthUser(null);
+    setActivePage('mining');
+    window.localStorage.removeItem(authTokenKey);
+    window.localStorage.removeItem(authUserKey);
+    setBackendMiningStatus('后端未连接');
+    setMessage('已退出登录。');
+  }
+
+  if (!authUser || !authToken) {
+    return (
+      <LoginPage
+        authDisplayName={authDisplayName}
+        authMode={authMode}
+        authPassword={authPassword}
+        authUsername={authUsername}
+        isAuthenticating={isAuthenticating}
+        message={message}
+        onAuthDisplayNameChange={setAuthDisplayName}
+        onAuthModeChange={setAuthMode}
+        onAuthPasswordChange={setAuthPassword}
+        onAuthUsernameChange={setAuthUsername}
+        onSubmitAuth={submitAuth}
+      />
+    );
   }
 
   function createNamedWork(title: string) {
@@ -323,12 +402,12 @@ function App() {
     <main className="game-shell">
       <section className="status-bar" aria-label="游戏状态">
         <div>
-          <p className="eyebrow">Live RGB Mining</p>
+          <p className="eyebrow">Server RGB Mining</p>
           <h1>RGB 马赛克矿场</h1>
         </div>
 
         <div className="status-grid">
-          <StatusItem label="挖矿状态" value="自动挖矿中" />
+          <StatusItem label="挖矿状态" value={isBackendMining ? '后端挖矿中' : '等待指令'} />
           <StatusItem label="已挖颜色" value={String(minedCount)} />
           <StatusItem label="库存种类" value={String(colorKinds)} />
           <StatusItem label="已填像素" value={`${filledPixels}/${pixelCount}`} />
@@ -362,7 +441,20 @@ function App() {
 
       {activePage !== 'canvas' ? <p className="global-message">{message}</p> : null}
 
-      {activePage === 'mining' && <MiningPage minedCount={minedCount} records={miningRecords} />}
+      <section className="auth-panel" aria-label="账号信息">
+        <span>当前账号：{authUser.displayName}</span>
+        <button onClick={logout} type="button">退出登录</button>
+      </section>
+
+      {activePage === 'mining' && (
+        <MiningPage
+          backendMiningStatus={backendMiningStatus}
+          isBackendMining={isBackendMining}
+          minedCount={minedCount}
+          onMineOnceFromBackend={mineOnceFromBackend}
+          records={miningRecords}
+        />
+      )}
       {activePage === 'inventory' && (
         <InventoryPage
           artworks={artworks}
@@ -415,7 +507,19 @@ function App() {
   );
 }
 
-function MiningPage({ minedCount, records }: { minedCount: number; records: MiningRecord[] }) {
+function MiningPage({
+  backendMiningStatus,
+  isBackendMining,
+  minedCount,
+  onMineOnceFromBackend,
+  records
+}: {
+  backendMiningStatus: string;
+  isBackendMining: boolean;
+  minedCount: number;
+  onMineOnceFromBackend: () => void;
+  records: MiningRecord[];
+}) {
   return (
     <section className="page-grid mining-page">
       <article className="panel mining-console">
@@ -423,17 +527,23 @@ function MiningPage({ minedCount, records }: { minedCount: number; records: Mini
           <span className="pulse" aria-hidden="true" />
           <h2>挖矿控制台</h2>
         </div>
-        <p className="panel-copy">矿机持续运行，产出的 RGB 色块会自动进入库存。这里只保留最近 10 条产出记录。</p>
+        <p className="panel-copy">挖矿请求由后端按当前登录用户执行，产出的 RGB 色块会写入该用户的数据库库存。</p>
         <div className="console-meter">
           <span>总产出</span>
           <strong>{minedCount}</strong>
+        </div>
+        <div className="backend-mining-card">
+          <span>后端状态：{backendMiningStatus}</span>
+          <button disabled={isBackendMining} onClick={onMineOnceFromBackend} type="button">
+            {isBackendMining ? '请求中...' : '后端挖矿一次'}
+          </button>
         </div>
       </article>
 
       <article className="panel records-panel">
         <h2>最近 10 条产出记录</h2>
         {records.length === 0 ? (
-          <p className="empty-state">等待第一条 RGB 产出...</p>
+          <p className="empty-state">等待后端 RGB 产出...</p>
         ) : (
           <ol className="record-list">
             {records.map((record) => (
@@ -449,6 +559,84 @@ function MiningPage({ minedCount, records }: { minedCount: number; records: Mini
         )}
       </article>
     </section>
+  );
+}
+
+function LoginPage({
+  authDisplayName,
+  authMode,
+  authPassword,
+  authUsername,
+  isAuthenticating,
+  message,
+  onAuthDisplayNameChange,
+  onAuthModeChange,
+  onAuthPasswordChange,
+  onAuthUsernameChange,
+  onSubmitAuth
+}: {
+  authDisplayName: string;
+  authMode: 'login' | 'register';
+  authPassword: string;
+  authUsername: string;
+  isAuthenticating: boolean;
+  message: string;
+  onAuthDisplayNameChange: (value: string) => void;
+  onAuthModeChange: (value: 'login' | 'register') => void;
+  onAuthPasswordChange: (value: string) => void;
+  onAuthUsernameChange: (value: string) => void;
+  onSubmitAuth: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const usernameInputId = useId();
+  const passwordInputId = useId();
+  const displayNameInputId = useId();
+  const rememberInputId = useId();
+
+  return (
+    <main className="login-shell">
+      <section className="login-card">
+        <div className="login-card-header">
+          <p className="eyebrow">RGB Mosaic Account</p>
+          <h1>{authMode === 'login' ? '登录账号' : '注册账号'}</h1>
+          <p>账号登录后，挖矿和色块库存都按后端用户保存。</p>
+        </div>
+
+        <form className="auth-panel login-form" onSubmit={onSubmitAuth}>
+          <div className="auth-mode-tabs" role="group" aria-label="账号操作">
+            <button className={authMode === 'login' ? 'active' : ''} onClick={() => onAuthModeChange('login')} type="button">登录</button>
+            <button className={authMode === 'register' ? 'active' : ''} onClick={() => onAuthModeChange('register')} type="button">注册</button>
+          </div>
+          <label className="login-field-label" htmlFor={usernameInputId}>
+            用户名
+          </label>
+          <div className="login-input-wrap">
+            <span className="login-icon user-icon" aria-hidden="true" />
+            <input aria-label="用户名" id={usernameInputId} onChange={(event) => onAuthUsernameChange(event.target.value)} placeholder="请输入用户名" required value={authUsername} />
+          </div>
+          {authMode === 'register' ? (
+            <>
+              <label className="login-field-label" htmlFor={displayNameInputId}>显示名</label>
+              <div className="login-input-wrap">
+                <span className="login-icon user-icon" aria-hidden="true" />
+                <input aria-label="显示名" id={displayNameInputId} onChange={(event) => onAuthDisplayNameChange(event.target.value)} placeholder="请输入显示名" value={authDisplayName} />
+              </div>
+            </>
+          ) : null}
+          <label className="login-field-label" htmlFor={passwordInputId}>密码</label>
+          <div className="login-input-wrap">
+            <span className="login-icon lock-icon" aria-hidden="true" />
+            <input aria-label="密码" id={passwordInputId} minLength={6} onChange={(event) => onAuthPasswordChange(event.target.value)} placeholder="请输入密码" required type="password" value={authPassword} />
+            <span className="login-icon eye-icon" aria-hidden="true" />
+          </div>
+          <label className="remember-row" htmlFor={rememberInputId}>
+            <input id={rememberInputId} type="checkbox" />
+            <span>记住密码</span>
+          </label>
+          <button className="login-submit" disabled={isAuthenticating} type="submit">{isAuthenticating ? '提交中...' : authMode === 'login' ? '登录' : '注册'}</button>
+          <p className="login-message" role="status">{message}</p>
+        </form>
+      </section>
+    </main>
   );
 }
 
@@ -490,14 +678,17 @@ function InventoryPage({
   const [artworkSearchQuery, setArtworkSearchQuery] = useState('');
   const [assetSearchQuery, setAssetSearchQuery] = useState('');
   const [assetSortOrder, setAssetSortOrder] = useState<AssetSortOrder>('newest');
-  const colorCatalog = REPRESENTATIVE_COLORS.map((item) => {
+  const backendOnlyColors: ColorCatalogEntry[] = inventory
+    .filter((stack) => !REPRESENTATIVE_COLORS.some((item) => colorKey(item.color) === colorKey(stack.color)))
+    .map((stack) => ({ color: stack.color, quantity: stack.quantity, rarity: stack.rarity ?? COLOR_RARITIES[0] }));
+  const colorCatalog: ColorCatalogEntry[] = [...backendOnlyColors, ...REPRESENTATIVE_COLORS.map((item) => {
     const owned = inventory.find((stack) => colorKey(stack.color) === colorKey(item.color));
 
     return {
       ...item,
       quantity: owned?.quantity ?? 0
     };
-  });
+  })];
   const normalizedColorSearch = colorSearchQuery.trim().toLowerCase().replaceAll(' ', '');
   const visibleColorCatalog = colorCatalog.filter((item) => {
     const matchesAvailability = !showOnlyOwnedColors || item.quantity > 0;
@@ -678,7 +869,7 @@ function ColorCatalogItem({
   onSelectColor
 }: {
   isSelected: boolean;
-  item: RepresentativeColor & { quantity: number };
+    item: ColorCatalogEntry;
   onSelectColor: (color: RgbColor) => void;
 }) {
   return (
@@ -696,7 +887,7 @@ function ColorCatalogItem({
   );
 }
 
-function ColorDetail({ item }: { item: RepresentativeColor & { quantity: number } }) {
+function ColorDetail({ item }: { item: ColorCatalogEntry }) {
   return (
     <aside className="detail-pane">
       <h2>物品详情</h2>
@@ -974,6 +1165,19 @@ function updateInventoryForPixelFill(
 
 function findColorRarity(color: RgbColor): ColorRarity {
   return REPRESENTATIVE_COLORS.find((item) => colorKey(item.color) === colorKey(color))?.rarity ?? REPRESENTATIVE_COLORS[0].rarity;
+}
+
+function loadAuthUser(): AuthUser | null {
+  const rawUser = window.localStorage.getItem(authUserKey);
+  if (!rawUser) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawUser) as AuthUser;
+  } catch {
+    return null;
+  }
 }
 
 function formatTime(timestamp: number): string {

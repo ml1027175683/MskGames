@@ -7,6 +7,7 @@ import (
 	"mskgames-server/internal/config"
 	"mskgames-server/internal/controller"
 	"mskgames-server/internal/db"
+	"mskgames-server/internal/middleware"
 	"mskgames-server/internal/repository"
 	"mskgames-server/internal/router"
 	"mskgames-server/internal/service"
@@ -27,6 +28,10 @@ func main() {
 	healthRepository := repository.NewHealthRepository(database)
 	healthService := service.NewHealthService(healthRepository)
 	healthController := controller.NewHealthController(healthService)
+	authRepository := repository.NewAuthRepository(database)
+	authService := service.NewAuthService(authRepository)
+	authController := controller.NewAuthController(authService)
+	authMiddleware := middleware.NewAuthMiddleware(authService)
 	miningRepository := repository.NewMiningRepository(database)
 	miningService := service.NewMiningService(miningRepository)
 	miningController := controller.NewMiningController(miningService, 1)
@@ -36,6 +41,8 @@ func main() {
 
 	handler := router.NewRouter(router.Dependencies{
 		HealthController:    healthController,
+		AuthController:      authController,
+		AuthMiddleware:      authMiddleware,
 		MiningController:    miningController,
 		InventoryController: inventoryController,
 	})

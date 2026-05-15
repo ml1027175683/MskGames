@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"mskgames-server/internal/middleware"
 	"mskgames-server/internal/model"
 )
 
@@ -12,16 +13,21 @@ type InventoryService interface {
 }
 
 type InventoryController struct {
-	service       InventoryService
-	defaultUserID uint64
+	service InventoryService
 }
 
 func NewInventoryController(service InventoryService, defaultUserID uint64) InventoryController {
-	return InventoryController{service: service, defaultUserID: defaultUserID}
+	return InventoryController{service: service}
 }
 
 func (controller InventoryController) ListColors(response http.ResponseWriter, request *http.Request) {
-	items, err := controller.service.ListColors(request.Context(), controller.defaultUserID)
+	userID, ok := middleware.UserIDFromContext(request.Context())
+	if !ok {
+		writeJSON(response, http.StatusUnauthorized, map[string]string{"error": "login required"})
+		return
+	}
+
+	items, err := controller.service.ListColors(request.Context(), userID)
 	if err != nil {
 		writeJSON(response, http.StatusInternalServerError, map[string]string{"error": "failed to list colors"})
 		return

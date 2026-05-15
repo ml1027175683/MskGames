@@ -48,3 +48,24 @@ func TestCoreMigrationEnforcesAssetAndPixelUniqueness(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultUserMigrationSeedsUserOne(t *testing.T) {
+	contents, err := os.ReadFile("002_seed_default_user.sql")
+	if err != nil {
+		t.Fatalf("failed to read default user migration: %v", err)
+	}
+
+	sql := strings.ToLower(string(contents))
+	requiredStatements := []string{
+		"insert into users",
+		"id, username, display_name",
+		"1, 'local-player', 'local player'",
+		"on duplicate key update",
+	}
+
+	for _, statement := range requiredStatements {
+		if !strings.Contains(sql, statement) {
+			t.Fatalf("expected default user migration to contain %q", statement)
+		}
+	}
+}

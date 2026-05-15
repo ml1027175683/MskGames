@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"mskgames-server/internal/controller"
+	"mskgames-server/internal/middleware"
 	"mskgames-server/internal/model"
 )
 
@@ -28,12 +29,20 @@ func (service stubInventoryService) ListColors(ctx context.Context, userID uint6
 	return []model.ColorInventoryItem{{Color: model.Color{Red: 255, Green: 0, Blue: 0, Rarity: "legendary"}, Quantity: 1}}, nil
 }
 
+type stubSessionAuthenticator struct{}
+
+func (auth stubSessionAuthenticator) Authenticate(ctx context.Context, token string) (model.UserSession, error) {
+	return model.UserSession{UserID: 1, Token: token}, nil
+}
+
 func TestNewRouterRegistersHealthRoutes(t *testing.T) {
 	healthController := controller.NewHealthController(stubHealthService{})
 	miningController := controller.NewMiningController(stubMiningService{}, 1)
 	inventoryController := controller.NewInventoryController(stubInventoryService{}, 1)
+	authMiddleware := middleware.NewAuthMiddleware(stubSessionAuthenticator{})
 	router := NewRouter(Dependencies{
 		HealthController:    healthController,
+		AuthMiddleware:      authMiddleware,
 		MiningController:    miningController,
 		InventoryController: inventoryController,
 	})
@@ -54,8 +63,10 @@ func TestNewRouterRegistersGameAPIRoutes(t *testing.T) {
 	healthController := controller.NewHealthController(stubHealthService{})
 	miningController := controller.NewMiningController(stubMiningService{}, 1)
 	inventoryController := controller.NewInventoryController(stubInventoryService{}, 1)
+	authMiddleware := middleware.NewAuthMiddleware(stubSessionAuthenticator{})
 	router := NewRouter(Dependencies{
 		HealthController:    healthController,
+		AuthMiddleware:      authMiddleware,
 		MiningController:    miningController,
 		InventoryController: inventoryController,
 	})
@@ -70,6 +81,7 @@ func TestNewRouterRegistersGameAPIRoutes(t *testing.T) {
 
 	for _, test := range tests {
 		request := httptest.NewRequest(test.method, test.path, nil)
+		request.Header.Set("Authorization", "Bearer token-123")
 		response := httptest.NewRecorder()
 
 		router.ServeHTTP(response, request)

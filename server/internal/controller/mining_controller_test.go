@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"mskgames-server/internal/middleware"
 	"mskgames-server/internal/model"
 )
 
@@ -22,6 +23,7 @@ func (service stubMiningService) Tick(ctx context.Context, userID uint64) (model
 func TestMiningControllerTickReturnsMinedColor(t *testing.T) {
 	controller := NewMiningController(stubMiningService{}, 1)
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/mining/tick", nil)
+	request = request.WithContext(middleware.ContextWithUserID(request.Context(), 1))
 	response := httptest.NewRecorder()
 
 	controller.Tick(response, request)

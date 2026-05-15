@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"mskgames-server/internal/middleware"
 	"mskgames-server/internal/model"
 )
 
@@ -21,6 +22,7 @@ func (service stubInventoryService) ListColors(ctx context.Context, userID uint6
 func TestInventoryControllerListColorsReturnsInventory(t *testing.T) {
 	controller := NewInventoryController(stubInventoryService{}, 1)
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/inventory/colors", nil)
+	request = request.WithContext(middleware.ContextWithUserID(request.Context(), 1))
 	response := httptest.NewRecorder()
 
 	controller.ListColors(response, request)

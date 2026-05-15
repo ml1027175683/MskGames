@@ -43,6 +43,26 @@ go test ./...
 go run ./cmd/api
 ```
 
+Windows PowerShell 启动脚本：
+
+```powershell
+.\start-api.ps1
+```
+
+如果 PowerShell 禁止运行 `.ps1` 脚本，使用 CMD 启动脚本：
+
+```powershell
+.\start-api.cmd
+```
+
+也可以临时绕过当前进程的 PowerShell 执行策略：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start-api.ps1
+```
+
+如果当前终端没有设置 `MYSQL_PASSWORD`，脚本会提示输入。`config/app.yaml` 中的数据库密码会被读取，但同名环境变量优先级更高。
+
 ## 数据库迁移
 
 核心表迁移文件：
@@ -87,4 +107,12 @@ go run ./cmd/migrate
 ```text
 GET /health
 GET /health/db
+```
+
+## API 文档
+
+当前 API 文档：
+
+```text
+docs/api.md
 ```

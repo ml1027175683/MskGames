@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { REPRESENTATIVE_COLORS, colorKey } from '../../domain/rgb';
-import type { ColorStack, RgbColor } from '../../domain/rgb';
+import { COLOR_RARITIES, REPRESENTATIVE_COLORS, colorKey } from '../../domain/rgb';
+import type { ColorStack, RepresentativeColor, RgbColor } from '../../domain/rgb';
 import type { CanvasZoom, MosaicWork } from '../../types/game';
 import { formatRgb } from '../common/MosaicPreview';
 import { ColorInventory } from '../inventory/ColorInventory';
 
 const canvasZoomLevels: CanvasZoom[] = [50, 100, 200, 400, 800, 1600, 3200];
+type CanvasColorEntry = ColorStack & RepresentativeColor;
 
 export function CanvasPage({
   currentDraft,
@@ -38,14 +39,17 @@ export function CanvasPage({
   const [showAllCanvasColors, setShowAllCanvasColors] = useState(false);
   const [newWorkTitle, setNewWorkTitle] = useState('');
   const hasReachedDraftLimit = draftWorkCount >= maxDraftWorks;
-  const canvasColorCatalog = REPRESENTATIVE_COLORS.map((item) => {
+  const backendOnlyColors: CanvasColorEntry[] = inventory
+    .filter((stack) => !REPRESENTATIVE_COLORS.some((item) => colorKey(item.color) === colorKey(stack.color)))
+    .map((stack) => ({ color: stack.color, quantity: stack.quantity, rarity: stack.rarity ?? COLOR_RARITIES[0] }));
+  const canvasColorCatalog: CanvasColorEntry[] = [...backendOnlyColors, ...REPRESENTATIVE_COLORS.map((item) => {
     const owned = inventory.find((stack) => colorKey(stack.color) === colorKey(item.color));
 
     return {
       ...item,
       quantity: owned?.quantity ?? 0
     };
-  });
+  })];
   const canvasColors = showAllCanvasColors ? canvasColorCatalog : canvasColorCatalog.filter((item) => item.quantity > 0);
 
   function changeCanvasZoom(direction: -1 | 1) {

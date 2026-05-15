@@ -7,13 +7,58 @@ describe('RGB 马赛克游戏原型', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     window.localStorage.clear();
+    window.localStorage.setItem('rgb-mosaic-auth-token', 'token-123');
+    window.localStorage.setItem('rgb-mosaic-auth-user', JSON.stringify({ id: 2, username: 'alice', displayName: 'Alice' }));
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
-  it('默认进入挖矿页并只展示最近 10 条产出记录', () => {
+  async function mineBackendColor(inventoryQuantity = 1, backendColor = { red: 231, green: 76, blue: 60, rarity: 'legendary' }) {
+    vi.useRealTimers();
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify(backendColor)))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [{ color: backendColor, quantity: inventoryQuantity }] })));
+
+    fireEvent.click(screen.getByRole('button', { name: '后端挖矿一次' }));
+    expect(await screen.findByText(/后端连接正常/)).toBeInTheDocument();
+  }
+
+  it('未登录时只能看到登录页，不能进入游戏页面', () => {
+    window.localStorage.clear();
+    render(<App />);
+
+    expect(screen.getByRole('heading', { name: '登录账号' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '挖矿控制台' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '挖矿' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '库存' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '画布' })).not.toBeInTheDocument();
+  });
+
+  it('登录成功后进入游戏，退出后回到登录页', async () => {
+    vi.useRealTimers();
+    window.localStorage.clear();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ user: { id: 2, username: 'alice', displayName: 'Alice' }, token: 'token-123' }))
+    );
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'alice' } });
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'secret123' } });
+    fireEvent.click(screen.getAllByRole('button', { name: '登录' }).at(-1)!);
+
+    expect(await screen.findByRole('heading', { name: '挖矿控制台' })).toBeInTheDocument();
+    expect(screen.getByText('当前账号：Alice')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '退出登录' }));
+
+    expect(screen.getByRole('heading', { name: '登录账号' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '挖矿控制台' })).not.toBeInTheDocument();
+  });
+
+  it('登录后进入挖矿页但不会再进行前端本地自动挖矿', () => {
     render(<App />);
 
     expect(screen.getByRole('heading', { name: '挖矿控制台' })).toBeInTheDocument();
@@ -24,8 +69,23 @@ describe('RGB 马赛克游戏原型', () => {
       vi.advanceTimersByTime(16500);
     });
 
-    expect(screen.getAllByText('+1')).toHaveLength(10);
-    expect(screen.getAllByText(/等级：/)).toHaveLength(10);
+    expect(screen.queryByText('+1')).not.toBeInTheDocument();
+    expect(screen.getByText('等待后端 RGB 产出...')).toBeInTheDocument();
+  });
+
+  it('后端挖矿成功后刷新用户后端库存', async () => {
+    vi.useRealTimers();
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ red: 231, green: 76, blue: 60, rarity: 'legendary' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [{ color: { red: 231, green: 76, blue: 60, rarity: 'legendary' }, quantity: 3 }] })));
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '后端挖矿一次' }));
+
+    expect(await screen.findByText(/后端连接正常/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+
+    expect(await screen.findByRole('button', { name: /RGB\(231, 76, 60\).*数量：3/ })).toBeInTheDocument();
   });
 
   it('库存页分开展示色块库存和马赛克作品库', () => {
@@ -58,12 +118,10 @@ describe('RGB 马赛克游戏原型', () => {
     expect(screen.queryByRole('button', { name: '继续创作 皮卡丘像素图标' })).not.toBeInTheDocument();
   });
 
-  it('色块库存可以切换仅显示可用颜色', () => {
+  it('色块库存可以切换仅显示可用颜色', async () => {
     render(<App />);
 
-    act(() => {
-      vi.advanceTimersByTime(1600);
-    });
+    await mineBackendColor();
 
     fireEvent.click(screen.getByRole('button', { name: '库存' }));
 
@@ -629,12 +687,10 @@ describe('RGB 马赛克游戏原型', () => {
     expect(screen.queryByLabelText('作品新名称')).not.toBeInTheDocument();
   });
 
-  it('编辑皮卡丘后回到画作库存仍保留所有作品并保存到皮卡丘', () => {
+  it('编辑皮卡丘后回到画作库存仍保留所有作品并保存到皮卡丘', async () => {
     render(<App />);
 
-    act(() => {
-      vi.advanceTimersByTime(1600);
-    });
+    await mineBackendColor();
 
     fireEvent.click(screen.getByRole('button', { name: '库存' }));
     fireEvent.click(screen.getByRole('button', { name: '画作库存' }));
@@ -744,12 +800,10 @@ describe('RGB 马赛克游戏原型', () => {
     expect(screen.getByRole('button', { name: '放大画布' })).toBeDisabled();
   });
 
-  it('命名创建的新画作填色后自动保存并可继续创作', () => {
+  it('命名创建的新画作填色后自动保存并可继续创作', async () => {
     render(<App />);
 
-    act(() => {
-      vi.advanceTimersByTime(1600);
-    });
+    await mineBackendColor();
 
     fireEvent.click(screen.getByRole('button', { name: '画布' }));
     fireEvent.click(screen.getByRole('button', { name: '新建画作' }));
@@ -806,20 +860,19 @@ describe('RGB 马赛克游戏原型', () => {
     expect(screen.getByRole('button', { name: '查看作品 当前待鉴定作品' })).toBeInTheDocument();
   });
 
-  it('删除命名草稿会从库存移除并返还已填颜色', () => {
+  it('删除命名草稿会从库存移除并返还已填颜色', async () => {
     render(<App />);
 
-    act(() => {
-      vi.advanceTimersByTime(1600);
-    });
+    await mineBackendColor();
 
     fireEvent.click(screen.getByRole('button', { name: '库存' }));
     const minedColorButton = screen.getAllByRole('button', { name: /数量：1/ })[0];
     const minedColorName = minedColorButton.textContent?.match(/RGB\((\d+), (\d+), (\d+)\)/)?.[0];
 
+    expect(minedColorButton).toBeDefined();
     expect(minedColorName).toBeDefined();
 
-    fireEvent.click(minedColorButton);
+    fireEvent.click(minedColorButton!);
     fireEvent.click(screen.getByRole('button', { name: '画布' }));
     fireEvent.click(screen.getByRole('button', { name: '新建画作' }));
     fireEvent.change(screen.getByLabelText('新作品名称'), { target: { value: '可删除草稿' } });
@@ -1064,21 +1117,16 @@ describe('RGB 马赛克游戏原型', () => {
     expect(screen.getByRole('button', { name: '查看作品 皮卡丘像素图标' })).toBeInTheDocument();
   });
 
-  it('覆盖已填像素时消耗新颜色并返还旧颜色', () => {
+  it('覆盖已填像素时消耗新颜色并返还旧颜色', async () => {
     render(<App />);
 
-    act(() => {
-      vi.advanceTimersByTime(1600);
-    });
+    await mineBackendColor(1, { red: 231, green: 76, blue: 60, rarity: 'legendary' });
 
     fireEvent.click(screen.getByRole('button', { name: '库存' }));
-    let minedColorButton = screen.getAllByRole('button', { name: /数量：1/ }).find((button) => !button.textContent?.includes('RGB(72, 152, 96)'));
+    const minedColorButton = screen.getAllByRole('button', { name: /数量：1/ }).find((button) => !button.textContent?.includes('RGB(72, 152, 96)'));
 
-    while (!minedColorButton) {
-      act(() => {
-        vi.advanceTimersByTime(1600);
-      });
-      minedColorButton = screen.getAllByRole('button', { name: /数量：1/ }).find((button) => !button.textContent?.includes('RGB(72, 152, 96)'));
+    if (!minedColorButton) {
+      throw new Error('expected a backend-mined color in inventory');
     }
 
     const minedColorName = minedColorButton.textContent?.match(/RGB\((\d+), (\d+), (\d+)\)/)?.[0];
