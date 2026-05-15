@@ -9,6 +9,7 @@ describe('RGB 马赛克游戏原型', () => {
     window.localStorage.clear();
     window.localStorage.setItem('rgb-mosaic-auth-token', 'token-123');
     window.localStorage.setItem('rgb-mosaic-auth-user', JSON.stringify({ id: 2, username: 'alice', displayName: 'Alice' }));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise<Response>(() => {}));
   });
 
   afterEach(() => {
@@ -18,9 +19,15 @@ describe('RGB 马赛克游戏原型', () => {
 
   async function mineBackendColor(inventoryQuantity = 1, backendColor = { red: 231, green: 76, blue: 60, rarity: 'legendary' }) {
     vi.useRealTimers();
-    vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(new Response(JSON.stringify(backendColor)))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [{ color: backendColor, quantity: inventoryQuantity }] })));
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url.includes('/api/v1/mining/tick')) {
+        return new Response(JSON.stringify(backendColor));
+      }
+
+      return new Response(JSON.stringify({ items: [{ color: backendColor, quantity: inventoryQuantity }] }));
+    });
 
     fireEvent.click(screen.getByRole('button', { name: '后端挖矿一次' }));
     expect(await screen.findByText(/后端连接正常/)).toBeInTheDocument();
@@ -30,31 +37,61 @@ describe('RGB 马赛克游戏原型', () => {
     window.localStorage.clear();
     render(<App />);
 
-    expect(screen.getByRole('heading', { name: '登录账号' })).toBeInTheDocument();
+    expect(screen.getByLabelText('账号')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '关闭登录窗口' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '账号操作' })).not.toBeInTheDocument();
+    expect(screen.queryByText('短信登录')).not.toBeInTheDocument();
+    expect(screen.queryByText('密码登录')).not.toBeInTheDocument();
+    expect(screen.queryByText('后端矿机已就绪，请登录用户库存后开始挖矿。')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '挖矿控制台' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '挖矿' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '库存' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '画布' })).not.toBeInTheDocument();
   });
 
+  it('未登录页提供独立注册账号按钮', () => {
+    window.localStorage.clear();
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '注册账号' }));
+
+    expect(screen.getByRole('button', { name: '注册' })).toHaveClass('login-submit');
+    expect(screen.getByLabelText('显示名')).toBeInTheDocument();
+  });
+
+  it('登录账号只保留英文和数字并限制 15 位', () => {
+    window.localStorage.clear();
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('账号'), { target: { value: 'alice_中文-123456789012345' } });
+
+    expect(screen.getByLabelText('账号')).toHaveValue('alice1234567890');
+  });
+
   it('登录成功后进入游戏，退出后回到登录页', async () => {
     vi.useRealTimers();
     window.localStorage.clear();
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ user: { id: 2, username: 'alice', displayName: 'Alice' }, token: 'token-123' }))
-    );
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url.includes('/api/v1/auth/login')) {
+        return new Response(JSON.stringify({ user: { id: 2, username: 'alice', displayName: 'Alice' }, token: 'token-123' }));
+      }
+
+      return new Response(JSON.stringify({ items: [] }));
+    });
     render(<App />);
 
-    fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'alice' } });
+    fireEvent.change(screen.getByLabelText('账号'), { target: { value: 'alice' } });
     fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'secret123' } });
-    fireEvent.click(screen.getAllByRole('button', { name: '登录' }).at(-1)!);
+    fireEvent.click(screen.getAllByRole('button', { name: '登录' })[0]);
 
     expect(await screen.findByRole('heading', { name: '挖矿控制台' })).toBeInTheDocument();
     expect(screen.getByText('当前账号：Alice')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '退出登录' }));
 
-    expect(screen.getByRole('heading', { name: '登录账号' })).toBeInTheDocument();
+    expect(screen.getByLabelText('账号')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '挖矿控制台' })).not.toBeInTheDocument();
   });
 
@@ -75,9 +112,15 @@ describe('RGB 马赛克游戏原型', () => {
 
   it('后端挖矿成功后刷新用户后端库存', async () => {
     vi.useRealTimers();
-    vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(new Response(JSON.stringify({ red: 231, green: 76, blue: 60, rarity: 'legendary' })))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [{ color: { red: 231, green: 76, blue: 60, rarity: 'legendary' }, quantity: 3 }] })));
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url.includes('/api/v1/mining/tick')) {
+        return new Response(JSON.stringify({ red: 231, green: 76, blue: 60, rarity: 'legendary' }));
+      }
+
+      return new Response(JSON.stringify({ items: [{ color: { red: 231, green: 76, blue: 60, rarity: 'legendary' }, quantity: 3 }] }));
+    });
     render(<App />);
 
     fireEvent.click(screen.getByRole('button', { name: '后端挖矿一次' }));
@@ -86,6 +129,40 @@ describe('RGB 马赛克游戏原型', () => {
     fireEvent.click(screen.getByRole('button', { name: '库存' }));
 
     expect(await screen.findByRole('button', { name: /RGB\(231, 76, 60\).*数量：3/ })).toBeInTheDocument();
+  });
+
+  it('登录启动后自动加载当前用户的后端库存', async () => {
+    vi.useRealTimers();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ items: [{ color: { red: 42, green: 156, blue: 236, rarity: 'rare' }, quantity: 5 }] }))
+    );
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+
+    expect(await screen.findByRole('button', { name: /RGB\(42, 156, 236\).*数量：5/ })).toBeInTheDocument();
+  });
+
+  it('本地存档中的色块库存不会覆盖后端用户库存', async () => {
+    vi.useRealTimers();
+    window.localStorage.setItem('rgb-mosaic-save-v1', JSON.stringify({
+      activeWorkId: 'current-draft',
+      artworks: [],
+      assets: [],
+      inventory: [{ color: { r: 255, g: 0, b: 0 }, quantity: 99, rarity: { level: 6, label: '传说', dropRate: 0.008 } }],
+      minedCount: 99,
+      selectedArtworkId: 'current-draft'
+    }));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ items: [{ color: { red: 82, green: 126, blue: 184, rarity: 'uncommon' }, quantity: 2 }] }))
+    );
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '库存' }));
+
+    expect(await screen.findByRole('button', { name: /RGB\(82, 126, 184\).*数量：2/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /RGB\(255, 0, 0\).*数量：99/ })).not.toBeInTheDocument();
   });
 
   it('库存页分开展示色块库存和马赛克作品库', () => {

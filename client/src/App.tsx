@@ -48,12 +48,44 @@ function App() {
   const [authDisplayName, setAuthDisplayName] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [message, setMessage] = useState('后端矿机已就绪，请登录用户库存后开始挖矿。');
+  const [message, setMessage] = useState('');
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     saveGame({ activeWorkId, artworks, assets, inventory, minedCount, selectedArtworkId });
   }, [activeWorkId, artworks, assets, inventory, minedCount, selectedArtworkId]);
+
+  useEffect(() => {
+    if (!authToken || !authUser) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    async function loadBackendInventory() {
+      try {
+        const backendInventory = await fetchBackendColorInventory(authToken);
+
+        if (isCancelled) {
+          return;
+        }
+
+        setInventory(backendInventory);
+        setSelectedColor((current) => current ?? backendInventory.find((item) => item.quantity > 0)?.color ?? null);
+        setBackendMiningStatus('后端库存已同步');
+      } catch {
+        if (!isCancelled) {
+          setBackendMiningStatus('后端库存同步失败');
+        }
+      }
+    }
+
+    void loadBackendInventory();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [authToken, authUser]);
 
   const colorKinds = inventory.filter((item) => item.quantity > 0).length;
   const activeWork = activeWorkId ? artworks.find((work) => work.id === activeWorkId) ?? null : null;
@@ -131,6 +163,10 @@ function App() {
     }
   }
 
+  function updateAuthUsername(value: string) {
+    setAuthUsername(value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 15));
+  }
+
   function logout() {
     setAuthToken('');
     setAuthUser(null);
@@ -153,7 +189,7 @@ function App() {
         onAuthDisplayNameChange={setAuthDisplayName}
         onAuthModeChange={setAuthMode}
         onAuthPasswordChange={setAuthPassword}
-        onAuthUsernameChange={setAuthUsername}
+        onAuthUsernameChange={updateAuthUsername}
         onSubmitAuth={submitAuth}
       />
     );
@@ -597,43 +633,37 @@ function LoginPage({
       <section className="login-card">
         <div className="login-card-header">
           <p className="eyebrow">RGB Mosaic Account</p>
-          <h1>{authMode === 'login' ? '登录账号' : '注册账号'}</h1>
-          <p>账号登录后，挖矿和色块库存都按后端用户保存。</p>
         </div>
 
         <form className="auth-panel login-form" onSubmit={onSubmitAuth}>
-          <div className="auth-mode-tabs" role="group" aria-label="账号操作">
-            <button className={authMode === 'login' ? 'active' : ''} onClick={() => onAuthModeChange('login')} type="button">登录</button>
-            <button className={authMode === 'register' ? 'active' : ''} onClick={() => onAuthModeChange('register')} type="button">注册</button>
-          </div>
-          <label className="login-field-label" htmlFor={usernameInputId}>
-            用户名
-          </label>
-          <div className="login-input-wrap">
-            <span className="login-icon user-icon" aria-hidden="true" />
-            <input aria-label="用户名" id={usernameInputId} onChange={(event) => onAuthUsernameChange(event.target.value)} placeholder="请输入用户名" required value={authUsername} />
+          <div className="login-field">
+            <label className="login-field-label" htmlFor={usernameInputId}>账号</label>
+            <div className="login-input-wrap">
+              <input aria-label="账号" id={usernameInputId} maxLength={15} onChange={(event) => onAuthUsernameChange(event.target.value)} pattern="[A-Za-z0-9]{1,15}" placeholder="请输入账号" required value={authUsername} />
+            </div>
           </div>
           {authMode === 'register' ? (
-            <>
+            <div className="login-field">
               <label className="login-field-label" htmlFor={displayNameInputId}>显示名</label>
               <div className="login-input-wrap">
-                <span className="login-icon user-icon" aria-hidden="true" />
                 <input aria-label="显示名" id={displayNameInputId} onChange={(event) => onAuthDisplayNameChange(event.target.value)} placeholder="请输入显示名" value={authDisplayName} />
               </div>
-            </>
+            </div>
           ) : null}
-          <label className="login-field-label" htmlFor={passwordInputId}>密码</label>
-          <div className="login-input-wrap">
-            <span className="login-icon lock-icon" aria-hidden="true" />
-            <input aria-label="密码" id={passwordInputId} minLength={6} onChange={(event) => onAuthPasswordChange(event.target.value)} placeholder="请输入密码" required type="password" value={authPassword} />
-            <span className="login-icon eye-icon" aria-hidden="true" />
+          <div className="login-field">
+            <label className="login-field-label" htmlFor={passwordInputId}>密码</label>
+            <div className="login-input-wrap">
+              <input aria-label="密码" id={passwordInputId} minLength={6} onChange={(event) => onAuthPasswordChange(event.target.value)} placeholder="请输入密码" required type="password" value={authPassword} />
+            </div>
           </div>
           <label className="remember-row" htmlFor={rememberInputId}>
-            <input id={rememberInputId} type="checkbox" />
-            <span>记住密码</span>
+            <span className="remember-option"><input id={rememberInputId} type="checkbox" />记住密码</span>
+            <span className="remember-option"><input type="checkbox" />自动登录</span>
           </label>
           <button className="login-submit" disabled={isAuthenticating} type="submit">{isAuthenticating ? '提交中...' : authMode === 'login' ? '登录' : '注册'}</button>
-          <p className="login-message" role="status">{message}</p>
+          {authMode === 'login' ? <button className="login-secondary-action" onClick={() => onAuthModeChange('register')} type="button">注册账号</button> : null}
+          <button className="forgot-password" type="button">忘记密码</button>
+          {message ? <p className="login-message" role="status">{message}</p> : null}
         </form>
       </section>
     </main>
